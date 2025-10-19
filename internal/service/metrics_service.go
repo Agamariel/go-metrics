@@ -72,3 +72,28 @@ func (s *MetricsService) UpdateMetricByPath(path string) error {
 		return ErrInvalidType
 	}
 }
+
+// GetMetric — получает метрику по имени и типу.
+func (s *MetricsService) GetMetric(name, mType string) (models.Metrics, error) {
+	// Проверяем, что имя не пустое
+	if strings.TrimSpace(name) == "" {
+		return models.Metrics{}, ErrInvalidName
+	}
+
+	// Проверяем тип метрики
+	if mType != models.Gauge && mType != models.Counter {
+		return models.Metrics{}, ErrInvalidType
+	}
+
+	metric, found := s.storage.GetMetric(name, mType)
+	if !found {
+		return models.Metrics{}, ErrInvalidName
+	}
+
+	return metric, nil
+}
+
+// GetAllMetrics — получает все метрики.
+func (s *MetricsService) GetAllMetrics() []models.Metrics {
+	return s.storage.GetAllMetrics()
+}

@@ -34,19 +34,59 @@ func (m *MockStorage) UpdateMetric(metric models.Metrics) error {
 	return nil
 }
 
-// Helper функция для создания запроса с chi параметрами
+func (m *MockStorage) GetMetric(id string, mType string) (models.Metrics, bool) {
+	var result models.Metrics
+	result.ID = id
+	result.MType = mType
+
+	switch mType {
+	case models.Gauge:
+		val, ok := m.gauges[id]
+		if !ok {
+			return models.Metrics{}, false
+		}
+		result.Value = &val
+		return result, true
+	case models.Counter:
+		val, ok := m.counters[id]
+		if !ok {
+			return models.Metrics{}, false
+		}
+		result.Delta = &val
+		return result, true
+	default:
+		return models.Metrics{}, false
+	}
+}
+
+func (m *MockStorage) GetAllMetrics() []models.Metrics {
+	var all []models.Metrics
+	for id, val := range m.gauges {
+		v := val
+		all = append(all, models.Metrics{
+			ID:    id,
+			MType: models.Gauge,
+			Value: &v,
+		})
+	}
+	for id, val := range m.counters {
+		v := val
+		all = append(all, models.Metrics{
+			ID:    id,
+			MType: models.Counter,
+			Delta: &v,
+		})
+	}
+	return all
+}
+
 func createRequestWithParams(method, path string, params map[string]string) *http.Request {
 	req := httptest.NewRequest(method, path, nil)
-	
-	// Создаем chi context с параметрами
 	rctx := chi.NewRouteContext()
 	for key, value := range params {
 		rctx.URLParams.Add(key, value)
 	}
-	
-	// Добавляем context к запросу
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-	
 	return req
 }
 func TestUpdateMetricHandlerGauge(t *testing.T) {
@@ -219,4 +259,175 @@ func TestUpdateMetricHandlerCounterAccumulation(t *testing.T) {
 	} else if val != 15 {
 		t.Errorf("Expected accumulated value 15, got %d", val)
 	}
+}
+
+func TestGetMetricHandlerGauge(t *testing.T) {
+	storage := NewMockStorage()
+	svc := service.NewMetricsService(storage)
+	handler := NewMetricsHandler(svc)
+
+	// Сначала сохраняем метрику
+	val := 123.456
+	storage.gauges["TestGauge"] = val
+
+	req := createRequestWithParams(http.MethodGet, "/value/gauge/TestGauge", map[string]string{
+		"type": "gauge",
+		"name": "TestGauge",
+	})
+	w := httptest.NewRecorder()
+
+	handler.GetMetricHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	expected := "123.456"
+	if w.Body.String() != expected {
+		t.Errorf("Expected body '%s', got '%s'", expected, w.Body.String())
+	}
+
+	if w.Header().Get("Content-Type") != "text/plain" {
+		t.Errorf("Expected Content-Type 'text/plain', got '%s'", w.Header().Get("Content-Type"))
+	}
+}
+
+func TestGetMetricHandlerCounter(t *testing.T) {
+	storage := NewMockStorage()
+	svc := service.NewMetricsService(storage)
+	handler := NewMetricsHandler(svc)
+
+	// Сначала сохраняем метрику
+	storage.counters["TestCounter"] = 42
+
+	req := createRequestWithParams(http.MethodGet, "/value/counter/TestCounter", map[string]string{
+		"type": "counter",
+		"name": "TestCounter",
+	})
+	w := httptest.NewRecorder()
+
+	handler.GetMetricHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	expected := "42"
+	if w.Body.String() != expected {
+		t.Errorf("Expected body '%s', got '%s'", expected, w.Body.String())
+	}
+}
+
+func TestGetMetricHandlerNotFound(t *testing.T) {
+	storage := NewMockStorage()
+	svc := service.NewMetricsService(storage)
+	handler := NewMetricsHandler(svc)
+
+	req := createRequestWithParams(http.MethodGet, "/value/gauge/NonExistent", map[string]string{
+		"type": "gauge",
+		"name": "NonExistent",
+	})
+	w := httptest.NewRecorder()
+
+	handler.GetMetricHandler(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404, got %d", w.Code)
+	}
+}
+
+func TestGetMetricHandlerInvalidType(t *testing.T) {
+	storage := NewMockStorage()
+	svc := service.NewMetricsService(storage)
+	handler := NewMetricsHandler(svc)
+
+	req := createRequestWithParams(http.MethodGet, "/value/invalid/TestMetric", map[string]string{
+		"type": "invalid",
+		"name": "TestMetric",
+	})
+	w := httptest.NewRecorder()
+
+	handler.GetMetricHandler(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
+	}
+}
+
+func TestListMetricsHandler(t *testing.T) {
+	storage := NewMockStorage()
+	svc := service.NewMetricsService(storage)
+	handler := NewMetricsHandler(svc)
+
+	// Добавляем несколько метрик
+	storage.gauges["Gauge1"] = 123.456
+	storage.gauges["Gauge2"] = 789.012
+	storage.counters["Counter1"] = 100
+	storage.counters["Counter2"] = 200
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	w := httptest.NewRecorder()
+
+	handler.ListMetricsHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	contentType := w.Header().Get("Content-Type")
+	if contentType != "text/html; charset=utf-8" {
+		t.Errorf("Expected Content-Type 'text/html; charset=utf-8', got '%s'", contentType)
+	}
+
+	body := w.Body.String()
+
+	// Проверяем, что в HTML есть названия метрик
+	if !contains(body, "Gauge1") {
+		t.Error("HTML does not contain 'Gauge1'")
+	}
+	if !contains(body, "Gauge2") {
+		t.Error("HTML does not contain 'Gauge2'")
+	}
+	if !contains(body, "Counter1") {
+		t.Error("HTML does not contain 'Counter1'")
+	}
+	if !contains(body, "Counter2") {
+		t.Error("HTML does not contain 'Counter2'")
+	}
+}
+
+func TestListMetricsHandlerEmpty(t *testing.T) {
+	storage := NewMockStorage()
+	svc := service.NewMetricsService(storage)
+	handler := NewMetricsHandler(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	w := httptest.NewRecorder()
+
+	handler.ListMetricsHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	body := w.Body.String()
+	if !contains(body, "Нет доступных метрик") {
+		t.Error("HTML should show empty metrics message")
+	}
+}
+
+// Helper функция для проверки подстроки
+func contains(s, substr string) bool {
+	return len(s) > 0 && len(substr) > 0 && (s == substr || len(s) > len(substr) &&
+		(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr ||
+			containsMiddle(s, substr)))
+}
+
+func containsMiddle(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
