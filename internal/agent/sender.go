@@ -2,23 +2,26 @@ package agent
 
 import (
 	"fmt"
-	"net/http"
 	"time"
+
+	"github.com/go-resty/resty/v2"
 )
 
 // MetricsSender отправляет метрики на сервер
 type MetricsSender struct {
 	serverURL string
-	client    *http.Client
+	client    *resty.Client
 }
 
-// NewMetricsSender создает новый отправитель метрик
+// NewMetricsSender создает новый клиент для отправки метрик
 func NewMetricsSender(serverURL string) *MetricsSender {
+	client := resty.New()
+	client.SetTimeout(5 * time.Second)
+	client.SetHeader("Content-Type", "text/plain")
+
 	return &MetricsSender{
 		serverURL: serverURL,
-		client: &http.Client{
-			Timeout: 5 * time.Second,
-		},
+		client:    client,
 	}
 }
 
@@ -26,21 +29,16 @@ func NewMetricsSender(serverURL string) *MetricsSender {
 func (s *MetricsSender) SendMetric(metricType, metricName, value string) error {
 	url := fmt.Sprintf("%s/update/%s/%s/%s", s.serverURL, metricType, metricName, value)
 
-	req, err := http.NewRequest(http.MethodPost, url, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
+	resp, err := s.client.R().
+		SetHeader("Content-Type", "text/plain").
+		Post(url)
 
-	req.Header.Set("Content-Type", "text/plain")
-
-	resp, err := s.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("server returned status: %d", resp.StatusCode)
+	if resp.StatusCode() != 200 {
+		return fmt.Errorf("server returned status: %d", resp.StatusCode())
 	}
 
 	return nil

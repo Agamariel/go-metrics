@@ -1,10 +1,11 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/Agamariel/go-metrics/internal/service"
+	"github.com/go-chi/chi/v5"
 )
 
 // MetricsHandler — HTTP-обработчик метрик.
@@ -18,8 +19,16 @@ func NewMetricsHandler(s *service.MetricsService) *MetricsHandler {
 }
 
 // UpdateMetricHandler обрабатывает POST /update/{type}/{name}/{value}
+// Теперь использует chi роутер для извлечения параметров из URL
 func (h *MetricsHandler) UpdateMetricHandler(w http.ResponseWriter, r *http.Request) {
-	path := strings.TrimPrefix(r.URL.Path, "/update/")
+	// Извлекаем параметры через chi.URLParam
+	metricType := chi.URLParam(r, "type")
+	metricName := chi.URLParam(r, "name")
+	metricValue := chi.URLParam(r, "value")
+
+	// Формируем путь для совместимости с существующей бизнес-логикой
+	path := fmt.Sprintf("%s/%s/%s", metricType, metricName, metricValue)
+	
 	err := h.service.UpdateMetricByPath(path)
 	if err != nil {
 		switch err {

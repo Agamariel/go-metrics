@@ -7,23 +7,34 @@ import (
 	"github.com/Agamariel/go-metrics/internal/handler"
 	"github.com/Agamariel/go-metrics/internal/repository"
 	"github.com/Agamariel/go-metrics/internal/service"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 func main() {
 	// Инициализируем in-memory хранилище
 	storage := repository.NewMemStorage()
 
-	// Создаём сервис с бизнес-логикой (если нужно — пока просто передаем storage)
+	// Создаём сервис с бизнес-логикой
 	metricsService := service.NewMetricsService(storage)
 
 	// Создаём HTTP-хэндлер
 	h := handler.NewMetricsHandler(metricsService)
 
-	// Настраиваем маршруты
-	http.HandleFunc("/update/", h.UpdateMetricHandler)
+	// Создаём chi роутер
+	r := chi.NewRouter()
+
+	// Добавляем middleware
+	r.Use(middleware.Logger)        // Логирование запросов
+	r.Use(middleware.Recoverer)     // Восстановление после паники
+	r.Use(middleware.RequestID)     // Добавление request ID
+	r.Use(middleware.RealIP)        // Определение реального IP клиента
+
+	// Настраиваем маршруты с использованием chi
+	r.Post("/update/{type}/{name}/{value}", h.UpdateMetricHandler)
 
 	log.Println("Server started at http://localhost:8080")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+	if err := http.ListenAndServe(":8080", r); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}
 }

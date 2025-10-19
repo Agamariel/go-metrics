@@ -37,6 +37,12 @@ func (s *MetricsService) UpdateMetricByPath(path string) error {
 	}
 
 	mType, name, valueStr := parts[0], parts[1], parts[2]
+	
+	// Проверяем, что имя метрики не пустое
+	if strings.TrimSpace(name) == "" {
+		return ErrInvalidName
+	}
+	
 	switch mType {
 	case models.Gauge:
 		val, err := strconv.ParseFloat(valueStr, 64)
