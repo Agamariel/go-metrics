@@ -24,8 +24,8 @@ func (h *MetricsHandler) UpdateMetricHandler(w http.ResponseWriter, r *http.Requ
 	parts := strings.Split(path, "/")
 
 	// Проверяем количество частей пути
-	if len(parts) < 3 {
-		http.Error(w, "invalid path format", http.StatusNotFound)
+	if len(parts) != 3 {
+		http.Error(w, "invalid path format", http.StatusBadRequest)
 		return
 	}
 
