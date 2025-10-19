@@ -29,7 +29,10 @@ func NewMetricsService(storage Storage) *MetricsService {
 func (s *MetricsService) UpdateMetricByPath(path string) error {
 	parts := strings.Split(path, "/")
 
-	if len(parts) == 2 {
+	switch len(parts) {
+	case 1:
+		return ErrInvalidType
+	case 2:
 		return ErrInvalidName
 	}
 
