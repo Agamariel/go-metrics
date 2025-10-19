@@ -4,6 +4,7 @@ package service
 import (
 	"errors"
 	"strconv"
+	"strings"
 
 	"github.com/Agamariel/go-metrics/internal/models"
 )
@@ -25,10 +26,14 @@ func NewMetricsService(storage Storage) *MetricsService {
 }
 
 // UpdateMetricByPath — обновляет метрику по данным из URL.
-func (s *MetricsService) UpdateMetricByPath(mType, name, valueStr string) error {
-	if name == "" {
+func (s *MetricsService) UpdateMetricByPath(path string) error {
+	parts := strings.Split(path, "/")
+
+	if len(parts) == 2 {
 		return ErrInvalidName
 	}
+
+	mType, name, valueStr := parts[0], parts[1], parts[2]
 	switch mType {
 	case models.Gauge:
 		val, err := strconv.ParseFloat(valueStr, 64)
