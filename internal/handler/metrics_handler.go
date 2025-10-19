@@ -23,18 +23,29 @@ func (h *MetricsHandler) UpdateMetricHandler(w http.ResponseWriter, r *http.Requ
 	path := strings.TrimPrefix(r.URL.Path, "/update/")
 	parts := strings.Split(path, "/")
 
-	if len(parts) != 3 {
-		http.Error(w, "Wrong format. Expected /update/{type}/{name}/{value}", http.StatusBadRequest)
+	// Проверяем количество частей пути
+	if len(parts) < 3 {
+		http.Error(w, "invalid path format", http.StatusNotFound)
 		return
 	}
 
 	mType, name, valueStr := parts[0], parts[1], parts[2]
 
+	// Проверяем отсутствие имени метрики
+	if name == "" {
+		http.Error(w, "metric name is required", http.StatusNotFound)
+		return
+	}
+
 	err := h.service.UpdateMetricByPath(mType, name, valueStr)
 	if err != nil {
 		switch err {
+		case service.ErrInvalidName:
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
 		case service.ErrInvalidType, service.ErrInvalidValue:
 			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		default:
 			http.Error(w, "internal error", http.StatusInternalServerError)
 		}

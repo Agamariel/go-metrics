@@ -10,6 +10,7 @@ import (
 
 var (
 	ErrInvalidType  = errors.New("invalid metric type")
+	ErrInvalidName  = errors.New("invalid metric name")
 	ErrInvalidValue = errors.New("invalid metric value")
 )
 
@@ -25,6 +26,9 @@ func NewMetricsService(storage Storage) *MetricsService {
 
 // UpdateMetricByPath — обновляет метрику по данным из URL.
 func (s *MetricsService) UpdateMetricByPath(mType, name, valueStr string) error {
+	if name == "" {
+		return ErrInvalidName
+	}
 	switch mType {
 	case models.Gauge:
 		val, err := strconv.ParseFloat(valueStr, 64)
