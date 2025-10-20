@@ -106,7 +106,7 @@ func TestIntegrationFlow(t *testing.T) {
 	}
 	body, _ = io.ReadAll(resp.Body)
 	bodyStr := string(body)
-	
+
 	if !strings.Contains(bodyStr, "TestGauge") {
 		t.Error("Metrics list should contain TestGauge")
 	}
@@ -167,11 +167,14 @@ func TestInvalidRequests(t *testing.T) {
 			} else {
 				resp, err = http.Get(tt.url)
 			}
-
 			if err != nil {
 				t.Fatalf("Request failed: %v", err)
 			}
-			defer resp.Body.Close()
+			defer func() {
+				if resp != nil {
+					resp.Body.Close()
+				}
+			}()
 
 			if resp.StatusCode != tt.expectedStatus {
 				t.Errorf("Expected status %d, got %d", tt.expectedStatus, resp.StatusCode)
