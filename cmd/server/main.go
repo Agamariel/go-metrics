@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"net/http"
 
@@ -12,6 +13,16 @@ import (
 )
 
 func main() {
+	// Определяем флаги командной строки
+	serverAddress := flag.String("a", "localhost:8080", "адрес эндпоинта HTTP-сервера")
+
+	flag.Parse()
+
+	// Проверяем, что не было передано лишних аргументов
+	if flag.NArg() > 0 {
+		log.Fatalf("Ошибка: неизвестные аргументы: %v", flag.Args())
+	}
+
 	// Инициализируем in-memory хранилище
 	storage := repository.NewMemStorage()
 
@@ -32,8 +43,8 @@ func main() {
 	r.Get("/value/{type}/{name}", h.GetMetricHandler)
 	r.Get("/", h.ListMetricsHandler)
 
-	log.Println("Server started at http://localhost:8080")
-	if err := http.ListenAndServe(":8080", r); err != nil {
+	log.Printf("Server started at http://%s", *serverAddress)
+	if err := http.ListenAndServe(*serverAddress, r); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}
 }

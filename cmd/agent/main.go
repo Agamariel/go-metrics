@@ -1,28 +1,56 @@
 package main
 
 import (
+	"flag"
+	"fmt"
 	"log"
 	"time"
 
 	"github.com/Agamariel/go-metrics/internal/agent"
 )
 
-const (
-	serverURL      = "http://localhost:8080"
-	pollInterval   = 2 * time.Second
-	reportInterval = 10 * time.Second
-)
-
 func main() {
+	// Определяем флаги командной строки
+	serverAddress := flag.String("a", "localhost:8080", "адрес эндпоинта HTTP-сервера")
+	reportInterval := flag.Int("r", 10, "частота отправки метрик на сервер (в секундах)")
+	pollInterval := flag.Int("p", 2, "частота опроса метрик из пакета runtime (в секундах)")
+
+	flag.Parse()
+
+	// Проверяем, что не было передано лишних аргументов
+	if flag.NArg() > 0 {
+		log.Fatalf("Ошибка: неизвестные аргументы: %v", flag.Args())
+	}
+
+	// Минимальные проверки значений
+	if *reportInterval <= 0 {
+		log.Fatalf("Ошибка: reportInterval должен быть положительным числом, получено: %d", *reportInterval)
+	}
+	if *pollInterval <= 0 {
+		log.Fatalf("Ошибка: pollInterval должен быть положительным числом, получено: %d", *pollInterval)
+	}
+
+	// Преобразуем интервалы в time.Duration
+	pollDuration := time.Duration(*pollInterval) * time.Second
+	reportDuration := time.Duration(*reportInterval) * time.Second
+
+	// Формируем полный URL сервера
+	serverURL := fmt.Sprintf("http://%s", *serverAddress)
+
+	log.Printf("Agent configuration:")
+	log.Printf("  Server address: %s", serverURL)
+	log.Printf("  Poll interval: %d seconds", *pollInterval)
+	log.Printf("  Report interval: %d seconds", *reportInterval)
+
 	// Создаем коллектор метрик
 	collector := agent.NewMetricsCollector()
 
-	// Создаем отправитель метрик
+	// Создаем клиент для отправки метрик
 	sender := agent.NewMetricsSender(serverURL)
 
 	// Запускаем горутину для сбора метрик
 	go func() {
-		ticker := time.NewTicker(pollInterval)
+		ticker := time.NewTicker(pollDuration)
 		defer ticker.Stop()
 
 		for range ticker.C {
@@ -33,7 +61,7 @@ func main() {
 
 	// Запускаем горутину для отправки метрик
 	go func() {
-		ticker := time.NewTicker(reportInterval)
+		ticker := time.NewTicker(reportDuration)
 		defer ticker.Stop()
 
 		for range ticker.C {
