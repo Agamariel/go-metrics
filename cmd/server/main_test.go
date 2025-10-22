@@ -44,7 +44,7 @@ func TestIntegrationFlow(t *testing.T) {
 		t.Fatalf("Failed to post gauge: %v", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		t.Errorf("Expected status 200 for gauge update, got %d", resp.StatusCode)
+		t.Errorf("Expected status %d for gauge update, got %d", http.StatusOK, resp.StatusCode)
 	}
 	resp.Body.Close()
 
@@ -54,7 +54,7 @@ func TestIntegrationFlow(t *testing.T) {
 		t.Fatalf("Failed to post counter: %v", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		t.Errorf("Expected status 200 for counter update, got %d", resp.StatusCode)
+		t.Errorf("Expected status %d for counter update, got %d", http.StatusOK, resp.StatusCode)
 	}
 	resp.Body.Close()
 
@@ -64,7 +64,7 @@ func TestIntegrationFlow(t *testing.T) {
 		t.Fatalf("Failed to get gauge: %v", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		t.Errorf("Expected status 200 for gauge get, got %d", resp.StatusCode)
+		t.Errorf("Expected status %d for gauge get, got %d", http.StatusOK, resp.StatusCode)
 	}
 	body, _ := io.ReadAll(resp.Body)
 	if string(body) != "123.456" {
@@ -78,7 +78,7 @@ func TestIntegrationFlow(t *testing.T) {
 		t.Fatalf("Failed to get counter: %v", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		t.Errorf("Expected status 200 for counter get, got %d", resp.StatusCode)
+		t.Errorf("Expected status %d for counter get, got %d", http.StatusOK, resp.StatusCode)
 	}
 	body, _ = io.ReadAll(resp.Body)
 	if string(body) != "42" {
@@ -92,7 +92,7 @@ func TestIntegrationFlow(t *testing.T) {
 		t.Fatalf("Failed to get non-existent metric: %v", err)
 	}
 	if resp.StatusCode != http.StatusNotFound {
-		t.Errorf("Expected status 404 for non-existent metric, got %d", resp.StatusCode)
+		t.Errorf("Expected status %d for non-existent metric, got %d", http.StatusNotFound, resp.StatusCode)
 	}
 	resp.Body.Close()
 
@@ -102,7 +102,7 @@ func TestIntegrationFlow(t *testing.T) {
 		t.Fatalf("Failed to get metrics list: %v", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		t.Errorf("Expected status 200 for metrics list, got %d", resp.StatusCode)
+		t.Errorf("Expected status %d for metrics list, got %d", http.StatusOK, resp.StatusCode)
 	}
 	body, _ = io.ReadAll(resp.Body)
 	bodyStr := string(body)

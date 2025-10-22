@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Agamariel/go-metrics/internal/models"
@@ -104,7 +105,7 @@ func TestUpdateMetricHandlerGauge(t *testing.T) {
 	handler.UpdateMetricHandler(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
 	}
 
 	// Проверяем, что метрика сохранена
@@ -130,7 +131,7 @@ func TestUpdateMetricHandlerCounter(t *testing.T) {
 	handler.UpdateMetricHandler(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
 	}
 
 	// Проверяем, что метрика сохранена
@@ -162,9 +163,9 @@ func TestUpdateMetricHandlerInvalidPath(t *testing.T) {
 
 			handler.UpdateMetricHandler(w, req)
 
-			if w.Code != http.StatusBadRequest && w.Code != http.StatusNotFound {
-				t.Errorf("Expected status 400 or 404 for %s, got %d", tt.name, w.Code)
-			}
+		if w.Code != http.StatusBadRequest && w.Code != http.StatusNotFound {
+			t.Errorf("Expected status %d or %d for %s, got %d", http.StatusBadRequest, http.StatusNotFound, tt.name, w.Code)
+		}
 		})
 	}
 }
@@ -184,7 +185,7 @@ func TestUpdateMetricHandlerInvalidType(t *testing.T) {
 	handler.UpdateMetricHandler(w, req)
 
 	if w.Code != http.StatusBadRequest {
-		t.Errorf("Expected status 400, got %d", w.Code)
+		t.Errorf("Expected status %d, got %d", http.StatusBadRequest, w.Code)
 	}
 }
 
@@ -216,7 +217,7 @@ func TestUpdateMetricHandlerInvalidValue(t *testing.T) {
 			handler.UpdateMetricHandler(w, req)
 
 			if w.Code != http.StatusBadRequest {
-				t.Errorf("Expected status 400 for %s, got %d", tt.name, w.Code)
+				t.Errorf("Expected status %d for %s, got %d", http.StatusBadRequest, tt.name, w.Code)
 			}
 		})
 	}
@@ -279,7 +280,7 @@ func TestGetMetricHandlerGauge(t *testing.T) {
 	handler.GetMetricHandler(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
 	}
 
 	expected := "123.456"
@@ -309,7 +310,7 @@ func TestGetMetricHandlerCounter(t *testing.T) {
 	handler.GetMetricHandler(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
 	}
 
 	expected := "42"
@@ -332,7 +333,7 @@ func TestGetMetricHandlerNotFound(t *testing.T) {
 	handler.GetMetricHandler(w, req)
 
 	if w.Code != http.StatusNotFound {
-		t.Errorf("Expected status 404, got %d", w.Code)
+		t.Errorf("Expected status %d, got %d", http.StatusNotFound, w.Code)
 	}
 }
 
@@ -350,7 +351,7 @@ func TestGetMetricHandlerInvalidType(t *testing.T) {
 	handler.GetMetricHandler(w, req)
 
 	if w.Code != http.StatusBadRequest {
-		t.Errorf("Expected status 400, got %d", w.Code)
+		t.Errorf("Expected status %d, got %d", http.StatusBadRequest, w.Code)
 	}
 }
 
@@ -371,7 +372,7 @@ func TestListMetricsHandler(t *testing.T) {
 	handler.ListMetricsHandler(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
 	}
 
 	contentType := w.Header().Get("Content-Type")
@@ -382,16 +383,16 @@ func TestListMetricsHandler(t *testing.T) {
 	body := w.Body.String()
 
 	// Проверяем, что в HTML есть названия метрик
-	if !contains(body, "Gauge1") {
+	if !strings.Contains(body, "Gauge1") {
 		t.Error("HTML does not contain 'Gauge1'")
 	}
-	if !contains(body, "Gauge2") {
+	if !strings.Contains(body, "Gauge2") {
 		t.Error("HTML does not contain 'Gauge2'")
 	}
-	if !contains(body, "Counter1") {
+	if !strings.Contains(body, "Counter1") {
 		t.Error("HTML does not contain 'Counter1'")
 	}
-	if !contains(body, "Counter2") {
+	if !strings.Contains(body, "Counter2") {
 		t.Error("HTML does not contain 'Counter2'")
 	}
 }
@@ -407,27 +408,11 @@ func TestListMetricsHandlerEmpty(t *testing.T) {
 	handler.ListMetricsHandler(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
+		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
 	}
 
 	body := w.Body.String()
-	if !contains(body, "Нет доступных метрик") {
+	if !strings.Contains(body, "Нет доступных метрик") {
 		t.Error("HTML should show empty metrics message")
 	}
-}
-
-// Helper функция для проверки подстроки
-func contains(s, substr string) bool {
-	return len(s) > 0 && len(substr) > 0 && (s == substr || len(s) > len(substr) &&
-		(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr ||
-			containsMiddle(s, substr)))
-}
-
-func containsMiddle(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

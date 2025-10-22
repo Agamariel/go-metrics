@@ -2,6 +2,7 @@ package agent
 
 import (
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -37,7 +38,7 @@ func (s *MetricsSender) SendMetric(metricType, metricName, value string) error {
 		return fmt.Errorf("failed to send request: %w", err)
 	}
 
-	if resp.StatusCode() != 200 {
+	if resp.StatusCode() != http.StatusOK {
 		return fmt.Errorf("server returned status: %d", resp.StatusCode())
 	}
 
