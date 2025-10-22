@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"path/filepath"
+	"runtime"
 
 	"github.com/Agamariel/go-metrics/internal/models"
 	"github.com/Agamariel/go-metrics/internal/service"
@@ -30,7 +32,7 @@ func (h *MetricsHandler) UpdateMetricHandler(w http.ResponseWriter, r *http.Requ
 
 	// Формируем путь для совместимости с существующей бизнес-логикой
 	path := fmt.Sprintf("%s/%s/%s", metricType, metricName, metricValue)
-	
+
 	err := h.service.UpdateMetricByPath(path)
 	if err != nil {
 		switch err {
@@ -107,7 +109,7 @@ func (h *MetricsHandler) ListMetricsHandler(w http.ResponseWriter, r *http.Reque
 			Type: m.MType,
 			Name: m.ID,
 		}
-		
+
 		switch m.MType {
 		case models.Gauge:
 			if m.Value != nil {
@@ -118,83 +120,16 @@ func (h *MetricsHandler) ListMetricsHandler(w http.ResponseWriter, r *http.Reque
 				view.Value = fmt.Sprintf("%d", *m.Delta)
 			}
 		}
-		
+
 		views = append(views, view)
 	}
 
-	// HTML шаблон для отображения метрик
-	tmpl := `<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Metrics</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background-color: #f5f5f5;
-        }
-        h1 {
-            color: #333;
-        }
-        table {
-            border-collapse: collapse;
-            width: 100%;
-            max-width: 800px;
-            background-color: white;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        th, td {
-            border: 1px solid #ddd;
-            padding: 12px;
-            text-align: left;
-        }
-        th {
-            background-color: #4CAF50;
-            color: white;
-        }
-        tr:nth-child(even) {
-            background-color: #f9f9f9;
-        }
-        tr:hover {
-            background-color: #f5f5f5;
-        }
-        .gauge {
-            color: #2196F3;
-        }
-        .counter {
-            color: #FF9800;
-        }
-    </style>
-</head>
-<body>
-    <h1>Метрики сервера</h1>
-    <table>
-        <thead>
-            <tr>
-                <th>Тип</th>
-                <th>Имя</th>
-                <th>Значение</th>
-            </tr>
-        </thead>
-        <tbody>
-            {{range .}}
-            <tr>
-                <td class="{{.Type}}">{{.Type}}</td>
-                <td>{{.Name}}</td>
-                <td>{{.Value}}</td>
-            </tr>
-            {{else}}
-            <tr>
-                <td colspan="3" style="text-align: center;">Нет доступных метрик</td>
-            </tr>
-            {{end}}
-        </tbody>
-    </table>
-</body>
-</html>`
+	// Загружаем HTML шаблон из файла
+	_, filename, _, _ := runtime.Caller(0)
+	dir := filepath.Dir(filename)
+	templatePath := filepath.Join(dir, "metrics.gohtml")
 
-	t, err := template.New("metrics").Parse(tmpl)
+	t, err := template.ParseFiles(templatePath)
 	if err != nil {
 		http.Error(w, "template error", http.StatusInternalServerError)
 		return
@@ -202,7 +137,7 @@ func (h *MetricsHandler) ListMetricsHandler(w http.ResponseWriter, r *http.Reque
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	
+
 	if err := t.Execute(w, views); err != nil {
 		http.Error(w, "template execution error", http.StatusInternalServerError)
 	}
