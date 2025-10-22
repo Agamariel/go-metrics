@@ -14,12 +14,27 @@ import (
 
 // MetricsHandler — HTTP-обработчик метрик.
 type MetricsHandler struct {
-	service *service.MetricsService
+	service  *service.MetricsService
+	template *template.Template
 }
 
 // NewMetricsHandler — конструктор.
 func NewMetricsHandler(s *service.MetricsService) *MetricsHandler {
-	return &MetricsHandler{service: s}
+	// Загружаем шаблон один раз при создании хэндлера
+	_, filename, _, _ := runtime.Caller(0)
+	dir := filepath.Dir(filename)
+	templatePath := filepath.Join(dir, "metrics.gohtml")
+
+	tmpl, err := template.ParseFiles(templatePath)
+	if err != nil {
+		// В случае ошибки паникуем, так как без шаблона работа невозможна
+		panic(fmt.Sprintf("failed to load template: %v", err))
+	}
+
+	return &MetricsHandler{
+		service:  s,
+		template: tmpl,
+	}
 }
 
 // UpdateMetricHandler обрабатывает POST /update/{type}/{name}/{value}
@@ -124,21 +139,11 @@ func (h *MetricsHandler) ListMetricsHandler(w http.ResponseWriter, r *http.Reque
 		views = append(views, view)
 	}
 
-	// Загружаем HTML шаблон из файла
-	_, filename, _, _ := runtime.Caller(0)
-	dir := filepath.Dir(filename)
-	templatePath := filepath.Join(dir, "metrics.gohtml")
-
-	t, err := template.ParseFiles(templatePath)
-	if err != nil {
-		http.Error(w, "template error", http.StatusInternalServerError)
-		return
-	}
-
+	// Используем предварительно загруженный шаблон
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 
-	if err := t.Execute(w, views); err != nil {
+	if err := h.template.Execute(w, views); err != nil {
 		http.Error(w, "template execution error", http.StatusInternalServerError)
 	}
 }
