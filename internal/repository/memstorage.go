@@ -4,10 +4,9 @@ import (
 	"sync"
 
 	"github.com/Agamariel/go-metrics/internal/models"
-	"github.com/Agamariel/go-metrics/internal/service"
 )
 
-// MemStorage — реализация интерфейса service.Storage в памяти.
+// MemStorage — реализация интерфейса Storage в памяти.
 type MemStorage struct {
 	mu       sync.RWMutex
 	gauges   map[string]float64
@@ -22,7 +21,7 @@ func NewMemStorage() *MemStorage {
 	}
 }
 
-// UpdateMetric реализует интерфейс service.Storage.
+// UpdateMetric реализует интерфейс Storage.
 func (m *MemStorage) UpdateMetric(metric models.Metrics) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -92,5 +91,5 @@ func (m *MemStorage) GetAllMetrics() []models.Metrics {
 	return all
 }
 
-// Убедимся, что MemStorage удовлетворяет интерфейсу service.Storage
-var _ service.Storage = (*MemStorage)(nil)
+// Убедимся, что MemStorage удовлетворяет интерфейсу Storage
+var _ Storage = (*MemStorage)(nil)

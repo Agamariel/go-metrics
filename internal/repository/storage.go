@@ -1,4 +1,4 @@
-package service
+package repository
 
 import "github.com/Agamariel/go-metrics/internal/models"
 

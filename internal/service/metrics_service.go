@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Agamariel/go-metrics/internal/models"
+	"github.com/Agamariel/go-metrics/internal/repository"
 )
 
 var (
@@ -17,11 +18,11 @@ var (
 
 // MetricsService — сервис для управления метриками.
 type MetricsService struct {
-	storage Storage
+	storage repository.Storage
 }
 
 // NewMetricsService — конструктор.
-func NewMetricsService(storage Storage) *MetricsService {
+func NewMetricsService(storage repository.Storage) *MetricsService {
 	return &MetricsService{storage: storage}
 }
 
