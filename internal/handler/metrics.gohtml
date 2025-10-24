@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Metrics</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            max-width: 800px;
+            background-color: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #4CAF50;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+        .gauge {
+            color: #2196F3;
+        }
+        .counter {
+            color: #FF9800;
+        }
+    </style>
+</head>
+<body>
+    <h1>Метрики сервера</h1>
+    <table>
+        <thead>
+            <tr>
+                <th>Тип</th>
+                <th>Имя</th>
+                <th>Значение</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .}}
+            <tr>
+                <td class="{{.Type}}">{{.Type}}</td>
+                <td>{{.Name}}</td>
+                <td>{{.Value}}</td>
+            </tr>
+            {{else}}
+            <tr>
+                <td colspan="3" style="text-align: center;">Нет доступных метрик</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</body>
+</html>
