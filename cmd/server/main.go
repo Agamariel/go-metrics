@@ -6,11 +6,13 @@ import (
 	"net/http"
 
 	"github.com/Agamariel/go-metrics/internal/handler"
+	custommiddleware "github.com/Agamariel/go-metrics/internal/middleware"
 	"github.com/Agamariel/go-metrics/internal/repository"
 	"github.com/Agamariel/go-metrics/internal/service"
 	"github.com/caarlos0/env/v6"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"go.uber.org/zap"
 )
 
 // Config содержит конфигурацию сервера
@@ -42,6 +44,13 @@ func main() {
 		log.Fatalf("Ошибка при парсинге переменных окружения: %v", err)
 	}
 
+	// Инициализируем zap логгер
+	logger, err := zap.NewDevelopment()
+	if err != nil {
+		log.Fatalf("Ошибка при инициализации логгера: %v", err)
+	}
+	defer logger.Sync()
+
 	// Инициализируем in-memory хранилище
 	storage := repository.NewMemStorage()
 
@@ -52,10 +61,10 @@ func main() {
 	r := chi.NewRouter()
 
 	// Добавляем middleware
-	r.Use(middleware.Logger)    // Логирование запросов
-	r.Use(middleware.Recoverer) // Восстановление после паники
-	r.Use(middleware.RequestID) // Добавление request ID
-	r.Use(middleware.RealIP)    // Определение реального IP клиента
+	r.Use(custommiddleware.Logger(logger)) // Кастомное логирование с zap
+	r.Use(middleware.Recoverer)            // Восстановление после паники
+	r.Use(middleware.RequestID)            // Добавление request ID
+	r.Use(middleware.RealIP)               // Определение реального IP клиента
 
 	// Настраиваем маршруты с использованием chi
 	r.Post("/update/{type}/{name}/{value}", h.UpdateMetricHandler)
