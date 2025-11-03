@@ -61,6 +61,9 @@ func main() {
 	r := chi.NewRouter()
 
 	// Добавляем middleware
+	r.Use(custommiddleware.GzipMiddleware) // Сжатие gzip для всех эндпоинтов через нашу middleware
+	// У роутера есть встроенная middleware для сжатия ответов gzip
+	//r.Use(middleware.Compress(1)) // уровень сжатия 1, сжимаются типы из дефолтного списка
 	r.Use(custommiddleware.Logger(logger)) // Кастомное логирование с zap
 	r.Use(middleware.Recoverer)            // Восстановление после паники
 	r.Use(middleware.RequestID)            // Добавление request ID

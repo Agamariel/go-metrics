@@ -1,6 +1,9 @@
 package agent
 
 import (
+	"bytes"
+	"compress/gzip"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -20,11 +23,36 @@ func NewMetricsSender(serverURL string) *MetricsSender {
 	client := resty.New()
 	client.SetTimeout(5 * time.Second)
 	client.SetHeader("Content-Type", "application/json")
+	client.SetHeader("Accept-Encoding", "gzip")
 
 	return &MetricsSender{
 		serverURL: serverURL,
 		client:    client,
 	}
+}
+
+// compressJSON сжимает данные в формате gzip
+func compressJSON(data interface{}) ([]byte, error) {
+	// Сериализуем в JSON
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+
+	// Сжимаем
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+
+	if _, err := gz.Write(jsonData); err != nil {
+		gz.Close()
+		return nil, err
+	}
+
+	if err := gz.Close(); err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
 }
 
 // SendMetric отправляет одну метрику на сервер
@@ -46,13 +74,20 @@ func (s *MetricsSender) SendMetric(metricType, metricName, value string) error {
 	return nil
 }
 
-// SendMetricJSON отправляет одну метрику на сервер в формате JSON
+// SendMetricJSON отправляет одну метрику на сервер в формате JSON с gzip сжатием
 func (s *MetricsSender) SendMetricJSON(metric models.Metrics) error {
 	url := fmt.Sprintf("%s/update/", s.serverURL)
 
+	// Сжимаем данные
+	compressed, err := compressJSON(metric)
+	if err != nil {
+		return fmt.Errorf("failed to compress data: %w", err)
+	}
+
 	resp, err := s.client.R().
 		SetHeader("Content-Type", "application/json").
-		SetBody(metric).
+		SetHeader("Content-Encoding", "gzip").
+		SetBody(compressed).
 		Post(url)
 
 	if err != nil {

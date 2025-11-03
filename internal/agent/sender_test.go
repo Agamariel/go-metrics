@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -80,8 +81,23 @@ func TestSendAllMetrics(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Проверяем, что это JSON API
 		if r.URL.Path == "/update/" {
+			// Читаем тело запроса
+			var reader io.Reader = r.Body
+
+			// Если данные сжаты, распаковываем
+			if r.Header.Get("Content-Encoding") == "gzip" {
+				gz, err := gzip.NewReader(r.Body)
+				if err != nil {
+					t.Errorf("Failed to create gzip reader: %v", err)
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
+				defer gz.Close()
+				reader = gz
+			}
+
 			// Декодируем JSON
-			body, _ := io.ReadAll(r.Body)
+			body, _ := io.ReadAll(reader)
 			var metric models.Metrics
 			if err := json.Unmarshal(body, &metric); err != nil {
 				t.Errorf("Failed to decode JSON: %v", err)
