@@ -15,12 +15,12 @@ import (
 
 // MetricsHandler — HTTP-обработчик метрик.
 type MetricsHandler struct {
-	service  *service.MetricsService
+	service  service.MetricsServiceInterface
 	template *template.Template
 }
 
 // NewMetricsHandler — конструктор.
-func NewMetricsHandler(s *service.MetricsService) *MetricsHandler {
+func NewMetricsHandler(s service.MetricsServiceInterface) *MetricsHandler {
 	// Загружаем шаблон один раз при создании хэндлера
 	_, filename, _, _ := runtime.Caller(0)
 	dir := filepath.Dir(filename)

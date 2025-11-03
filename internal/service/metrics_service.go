@@ -16,6 +16,16 @@ var (
 	ErrInvalidValue = errors.New("invalid metric value")
 )
 
+// MetricsServiceInterface определяет интерфейс для работы с метриками
+type MetricsServiceInterface interface {
+	UpdateMetricByPath(path string) error
+	UpdateMetric(metric models.Metrics) error
+	UpdateGauge(name string, value float64) error
+	UpdateCounter(name string, delta int64) error
+	GetMetric(name, mType string) (models.Metrics, error)
+	GetAllMetrics() []models.Metrics
+}
+
 // MetricsService — сервис для управления метриками.
 type MetricsService struct {
 	storage repository.Storage
@@ -72,6 +82,11 @@ func (s *MetricsService) UpdateMetricByPath(path string) error {
 	default:
 		return ErrInvalidType
 	}
+}
+
+// UpdateMetric — обновляет метрику
+func (s *MetricsService) UpdateMetric(metric models.Metrics) error {
+	return s.storage.UpdateMetric(metric)
 }
 
 // UpdateGauge — обновляет gauge метрику
