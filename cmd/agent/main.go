@@ -7,13 +7,28 @@ import (
 	"time"
 
 	"github.com/Agamariel/go-metrics/internal/agent"
+	"github.com/caarlos0/env/v6"
 )
 
+// Config содержит конфигурацию агента
+type Config struct {
+	Address        string `env:"ADDRESS"`
+	ReportInterval int    `env:"REPORT_INTERVAL"`
+	PollInterval   int    `env:"POLL_INTERVAL"`
+}
+
 func main() {
+	// Значения по умолчанию
+	cfg := Config{
+		Address:        "localhost:8080",
+		ReportInterval: 10,
+		PollInterval:   2,
+	}
+
 	// Определяем флаги командной строки
-	serverAddress := flag.String("a", "localhost:8080", "адрес эндпоинта HTTP-сервера")
-	reportInterval := flag.Int("r", 10, "частота отправки метрик на сервер (в секундах)")
-	pollInterval := flag.Int("p", 2, "частота опроса метрик из пакета runtime (в секундах)")
+	serverAddress := flag.String("a", cfg.Address, "адрес эндпоинта HTTP-сервера")
+	reportInterval := flag.Int("r", cfg.ReportInterval, "частота отправки метрик на сервер (в секундах)")
+	pollInterval := flag.Int("p", cfg.PollInterval, "частота опроса метрик из пакета runtime (в секундах)")
 
 	flag.Parse()
 
@@ -22,25 +37,35 @@ func main() {
 		log.Fatalf("Ошибка: неизвестные аргументы: %v", flag.Args())
 	}
 
-	// Минимальные проверки значений
-	if *reportInterval <= 0 {
-		log.Fatalf("Ошибка: reportInterval должен быть положительным числом, получено: %d", *reportInterval)
+	// Применяем значения из флагов
+	cfg.Address = *serverAddress
+	cfg.ReportInterval = *reportInterval
+	cfg.PollInterval = *pollInterval
+
+	// Парсим переменные окружения (приоритет выше флагов)
+	if err := env.Parse(&cfg); err != nil {
+		log.Fatalf("Ошибка при парсинге переменных окружения: %v", err)
 	}
-	if *pollInterval <= 0 {
-		log.Fatalf("Ошибка: pollInterval должен быть положительным числом, получено: %d", *pollInterval)
+
+	// Минимальные проверки значений
+	if cfg.ReportInterval <= 0 {
+		log.Fatalf("Ошибка: reportInterval должен быть положительным числом, получено: %d", cfg.ReportInterval)
+	}
+	if cfg.PollInterval <= 0 {
+		log.Fatalf("Ошибка: pollInterval должен быть положительным числом, получено: %d", cfg.PollInterval)
 	}
 
 	// Преобразуем интервалы в time.Duration
-	pollDuration := time.Duration(*pollInterval) * time.Second
-	reportDuration := time.Duration(*reportInterval) * time.Second
+	pollDuration := time.Duration(cfg.PollInterval) * time.Second
+	reportDuration := time.Duration(cfg.ReportInterval) * time.Second
 
 	// Формируем полный URL сервера
-	serverURL := fmt.Sprintf("http://%s", *serverAddress)
+	serverURL := fmt.Sprintf("http://%s", cfg.Address)
 
 	log.Printf("Agent configuration:")
 	log.Printf("  Server address: %s", serverURL)
-	log.Printf("  Poll interval: %d seconds", *pollInterval)
-	log.Printf("  Report interval: %d seconds", *reportInterval)
+	log.Printf("  Poll interval: %d seconds", cfg.PollInterval)
+	log.Printf("  Report interval: %d seconds", cfg.ReportInterval)
 
 	// Создаем коллектор метрик
 	collector := agent.NewMetricsCollector()
