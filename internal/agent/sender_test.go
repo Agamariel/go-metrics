@@ -1,9 +1,13 @@
 package agent
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/Agamariel/go-metrics/internal/models"
 )
 
 func TestNewMetricsSender(t *testing.T) {
@@ -70,11 +74,22 @@ func TestSendMetricServerError(t *testing.T) {
 }
 
 func TestSendAllMetrics(t *testing.T) {
-	receivedMetrics := make(map[string]string)
+	receivedMetrics := make(map[string]models.Metrics)
 
 	// Создаем тестовый сервер
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedMetrics[r.URL.Path] = r.Method
+		// Проверяем, что это JSON API
+		if r.URL.Path == "/update/" {
+			// Декодируем JSON
+			body, _ := io.ReadAll(r.Body)
+			var metric models.Metrics
+			if err := json.Unmarshal(body, &metric); err != nil {
+				t.Errorf("Failed to decode JSON: %v", err)
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			receivedMetrics[metric.ID] = metric
+		}
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
@@ -97,16 +112,21 @@ func TestSendAllMetrics(t *testing.T) {
 	}
 
 	// Проверяем, что все метрики были отправлены
-	expectedPaths := []string{
-		"/update/gauge/Metric1/123.456000",
-		"/update/gauge/Metric2/789.012000",
-		"/update/counter/Counter1/100",
-		"/update/counter/Counter2/200",
+	expectedMetrics := map[string]string{
+		"Metric1":  models.Gauge,
+		"Metric2":  models.Gauge,
+		"Counter1": models.Counter,
+		"Counter2": models.Counter,
 	}
 
-	for _, path := range expectedPaths {
-		if _, exists := receivedMetrics[path]; !exists {
-			t.Errorf("Metric not received: %s", path)
+	for name, expectedType := range expectedMetrics {
+		metric, exists := receivedMetrics[name]
+		if !exists {
+			t.Errorf("Metric not received: %s", name)
+			continue
+		}
+		if metric.MType != expectedType {
+			t.Errorf("Metric %s: expected type %s, got %s", name, expectedType, metric.MType)
 		}
 	}
 }

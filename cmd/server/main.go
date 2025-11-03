@@ -69,6 +69,12 @@ func main() {
 	// Настраиваем маршруты с использованием chi
 	r.Post("/update/{type}/{name}/{value}", h.UpdateMetricHandler)
 	r.Get("/value/{type}/{name}", h.GetMetricHandler)
+
+	// JSON API эндпоинты
+	r.Post("/update/", h.UpdateMetricJSONHandler)
+	r.Post("/value/", h.GetMetricJSONHandler)
+
+	// Список всех метрик
 	r.Get("/", h.ListMetricsHandler)
 
 	log.Printf("Server started at http://%s", cfg.Address)

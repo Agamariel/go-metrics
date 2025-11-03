@@ -38,12 +38,12 @@ func (s *MetricsService) UpdateMetricByPath(path string) error {
 	}
 
 	mType, name, valueStr := parts[0], parts[1], parts[2]
-	
+
 	// Проверяем, что имя метрики не пустое
 	if strings.TrimSpace(name) == "" {
 		return ErrInvalidName
 	}
-	
+
 	switch mType {
 	case models.Gauge:
 		val, err := strconv.ParseFloat(valueStr, 64)
@@ -72,6 +72,34 @@ func (s *MetricsService) UpdateMetricByPath(path string) error {
 	default:
 		return ErrInvalidType
 	}
+}
+
+// UpdateGauge — обновляет gauge метрику
+func (s *MetricsService) UpdateGauge(name string, value float64) error {
+	if strings.TrimSpace(name) == "" {
+		return ErrInvalidName
+	}
+
+	m := models.Metrics{
+		ID:    name,
+		MType: models.Gauge,
+		Value: &value,
+	}
+	return s.storage.UpdateMetric(m)
+}
+
+// UpdateCounter — обновляет counter метрику
+func (s *MetricsService) UpdateCounter(name string, delta int64) error {
+	if strings.TrimSpace(name) == "" {
+		return ErrInvalidName
+	}
+
+	m := models.Metrics{
+		ID:    name,
+		MType: models.Counter,
+		Delta: &delta,
+	}
+	return s.storage.UpdateMetric(m)
 }
 
 // GetMetric — получает метрику по имени и типу.
