@@ -3,13 +3,14 @@ package main
 import (
 	"context"
 	"flag"
-	"log"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/Agamariel/go-metrics/internal/config"
 	"github.com/Agamariel/go-metrics/internal/handler"
 	custommiddleware "github.com/Agamariel/go-metrics/internal/middleware"
 	"github.com/Agamariel/go-metrics/internal/repository"
@@ -20,22 +21,17 @@ import (
 	"go.uber.org/zap"
 )
 
-// Config содержит конфигурацию сервера
-type Config struct {
-	Address         string `env:"ADDRESS"`
-	StoreInterval   int    `env:"STORE_INTERVAL"`
-	FileStoragePath string `env:"FILE_STORAGE_PATH"`
-	Restore         bool   `env:"RESTORE"`
-}
-
 func main() {
-	// Значения по умолчанию
-	cfg := Config{
-		Address:         "localhost:8080",
-		StoreInterval:   300,
-		FileStoragePath: "metrics-db.json",
-		Restore:         true,
+	// Инициализируем zap логгер
+	logger, err := zap.NewDevelopment()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Ошибка при инициализации логгера: %v\n", err)
+		os.Exit(1)
 	}
+	defer logger.Sync()
+
+	// Значения по умолчанию
+	cfg := config.NewServerConfig()
 
 	// Определяем флаги командной строки
 	serverAddress := flag.String("a", cfg.Address, "адрес эндпоинта HTTP-сервера")
@@ -47,7 +43,7 @@ func main() {
 
 	// Проверяем, что не было передано лишних аргументов
 	if flag.NArg() > 0 {
-		log.Fatalf("Ошибка: неизвестные аргументы: %v", flag.Args())
+		logger.Fatal("Ошибка: неизвестные аргументы", zap.Strings("args", flag.Args()))
 	}
 
 	// Применяем значения из флагов
@@ -58,15 +54,8 @@ func main() {
 
 	// Парсим переменные окружения (приоритет выше флагов)
 	if err := env.Parse(&cfg); err != nil {
-		log.Fatalf("Ошибка при парсинге переменных окружения: %v", err)
+		logger.Fatal("Ошибка при парсинге переменных окружения", zap.Error(err))
 	}
-
-	// Инициализируем zap логгер
-	logger, err := zap.NewDevelopment()
-	if err != nil {
-		log.Fatalf("Ошибка при инициализации логгера: %v", err)
-	}
-	defer logger.Sync()
 
 	// Инициализируем хранилище с файловой персистентностью
 	storage, err := repository.NewFileStorage(repository.FileStorageConfig{
@@ -76,7 +65,7 @@ func main() {
 		Logger:        logger,
 	})
 	if err != nil {
-		log.Fatalf("Ошибка при инициализации хранилища: %v", err)
+		logger.Fatal("Ошибка при инициализации хранилища", zap.Error(err))
 	}
 
 	// Создаём сервис с бизнес-логикой
@@ -117,9 +106,9 @@ func main() {
 
 	// Запускаем сервер в отдельной горутине
 	go func() {
-		log.Printf("Server started at http://%s", cfg.Address)
+		logger.Info("Сервер запущен", zap.String("address", cfg.Address))
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server error: %v", err)
+			logger.Fatal("Ошибка сервера", zap.Error(err))
 		}
 	}()
 

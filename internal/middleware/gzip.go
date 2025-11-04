@@ -83,6 +83,12 @@ func GzipMiddleware(next http.Handler) http.Handler {
 
 		if !compress || buf.buffer.Len() == 0 {
 			// Не сжимаем, просто отправляем
+			// Копируем все заголовки из буфера в реальный ResponseWriter
+			for key, values := range buf.Header() {
+				for _, value := range values {
+					w.Header().Add(key, value)
+				}
+			}
 			if buf.statusCode != 0 {
 				w.WriteHeader(buf.statusCode)
 			}
@@ -91,6 +97,12 @@ func GzipMiddleware(next http.Handler) http.Handler {
 		}
 
 		// Сжимаем ответ
+		// Копируем все заголовки из буфера в реальный ResponseWriter
+		for key, values := range buf.Header() {
+			for _, value := range values {
+				w.Header().Add(key, value)
+			}
+		}
 		w.Header().Set("Content-Encoding", "gzip")
 		w.Header().Del("Content-Length")
 

@@ -3,27 +3,26 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
+	"os"
 	"time"
 
 	"github.com/Agamariel/go-metrics/internal/agent"
+	"github.com/Agamariel/go-metrics/internal/config"
 	"github.com/caarlos0/env/v6"
+	"go.uber.org/zap"
 )
 
-// Config содержит конфигурацию агента
-type Config struct {
-	Address        string `env:"ADDRESS"`
-	ReportInterval int    `env:"REPORT_INTERVAL"`
-	PollInterval   int    `env:"POLL_INTERVAL"`
-}
-
 func main() {
-	// Значения по умолчанию
-	cfg := Config{
-		Address:        "localhost:8080",
-		ReportInterval: 10,
-		PollInterval:   2,
+	// Инициализируем zap логгер
+	logger, err := zap.NewDevelopment()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Ошибка при инициализации логгера: %v\n", err)
+		os.Exit(1)
 	}
+	defer logger.Sync()
+
+	// Значения по умолчанию
+	cfg := config.NewAgentConfig()
 
 	// Определяем флаги командной строки
 	serverAddress := flag.String("a", cfg.Address, "адрес эндпоинта HTTP-сервера")
@@ -34,7 +33,7 @@ func main() {
 
 	// Проверяем, что не было передано лишних аргументов
 	if flag.NArg() > 0 {
-		log.Fatalf("Ошибка: неизвестные аргументы: %v", flag.Args())
+		logger.Fatal("Ошибка: неизвестные аргументы", zap.Strings("args", flag.Args()))
 	}
 
 	// Применяем значения из флагов
@@ -44,15 +43,15 @@ func main() {
 
 	// Парсим переменные окружения (приоритет выше флагов)
 	if err := env.Parse(&cfg); err != nil {
-		log.Fatalf("Ошибка при парсинге переменных окружения: %v", err)
+		logger.Fatal("Ошибка при парсинге переменных окружения", zap.Error(err))
 	}
 
 	// Минимальные проверки значений
 	if cfg.ReportInterval <= 0 {
-		log.Fatalf("Ошибка: reportInterval должен быть положительным числом, получено: %d", cfg.ReportInterval)
+		logger.Fatal("Ошибка: reportInterval должен быть положительным числом", zap.Int("reportInterval", cfg.ReportInterval))
 	}
 	if cfg.PollInterval <= 0 {
-		log.Fatalf("Ошибка: pollInterval должен быть положительным числом, получено: %d", cfg.PollInterval)
+		logger.Fatal("Ошибка: pollInterval должен быть положительным числом", zap.Int("pollInterval", cfg.PollInterval))
 	}
 
 	// Преобразуем интервалы в time.Duration
@@ -62,10 +61,11 @@ func main() {
 	// Формируем полный URL сервера
 	serverURL := fmt.Sprintf("http://%s", cfg.Address)
 
-	log.Printf("Agent configuration:")
-	log.Printf("  Server address: %s", serverURL)
-	log.Printf("  Poll interval: %d seconds", cfg.PollInterval)
-	log.Printf("  Report interval: %d seconds", cfg.ReportInterval)
+	logger.Info("Конфигурация агента",
+		zap.String("server_address", serverURL),
+		zap.Int("poll_interval_sec", cfg.PollInterval),
+		zap.Int("report_interval_sec", cfg.ReportInterval),
+	)
 
 	// Создаем коллектор метрик
 	collector := agent.NewMetricsCollector()
@@ -80,7 +80,7 @@ func main() {
 
 		for range ticker.C {
 			collector.CollectMetrics()
-			log.Println("Metrics collected")
+			logger.Info("Метрики собраны")
 		}
 	}()
 
@@ -94,9 +94,9 @@ func main() {
 			counters := collector.GetCounters()
 
 			if err := sender.SendAllMetrics(gauges, counters); err != nil {
-				log.Printf("Failed to send metrics: %v", err)
+				logger.Error("Ошибка при отправке метрик", zap.Error(err))
 			} else {
-				log.Println("Metrics sent successfully")
+				logger.Info("Метрики успешно отправлены")
 			}
 		}
 	}()

@@ -13,14 +13,25 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// metricsService определяет интерфейс для работы с метриками.
+type metricsService interface {
+	UpdateMetricByPath(path string) error
+	UpdateGauge(name string, value float64) error
+	UpdateCounter(name string, delta int64) error
+	GetMetric(name, mType string) (models.Metrics, error)
+	GetAllMetrics() []models.Metrics
+}
+
 // MetricsHandler — HTTP-обработчик метрик.
 type MetricsHandler struct {
-	service  service.MetricsServiceInterface
+	service  metricsService
 	template *template.Template
 }
 
 // NewMetricsHandler — конструктор.
-func NewMetricsHandler(s service.MetricsServiceInterface) *MetricsHandler {
+// Принимает любой тип, реализующий интерфейс metricsService.
+// service.MetricsService автоматически удовлетворяет этому интерфейсу.
+func NewMetricsHandler(s metricsService) *MetricsHandler {
 	// Загружаем шаблон один раз при создании хэндлера
 	_, filename, _, _ := runtime.Caller(0)
 	dir := filepath.Dir(filename)
