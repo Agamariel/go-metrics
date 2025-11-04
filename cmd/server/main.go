@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"net/http"
 	"os"
@@ -15,7 +14,6 @@ import (
 	custommiddleware "github.com/Agamariel/go-metrics/internal/middleware"
 	"github.com/Agamariel/go-metrics/internal/repository"
 	"github.com/Agamariel/go-metrics/internal/service"
-	"github.com/caarlos0/env/v6"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"go.uber.org/zap"
@@ -30,31 +28,10 @@ func main() {
 	}
 	defer logger.Sync()
 
-	// Значения по умолчанию
-	cfg := config.NewServerConfig()
-
-	// Определяем флаги командной строки
-	serverAddress := flag.String("a", cfg.Address, "адрес эндпоинта HTTP-сервера")
-	storeInterval := flag.Int("i", cfg.StoreInterval, "интервал сохранения метрик в секундах (0 = синхронное сохранение)")
-	fileStoragePath := flag.String("f", cfg.FileStoragePath, "путь к файлу для сохранения метрик")
-	restore := flag.Bool("r", cfg.Restore, "загружать ли ранее сохранённые метрики при старте")
-
-	flag.Parse()
-
-	// Проверяем, что не было передано лишних аргументов
-	if flag.NArg() > 0 {
-		logger.Fatal("Ошибка: неизвестные аргументы", zap.Strings("args", flag.Args()))
-	}
-
-	// Применяем значения из флагов
-	cfg.Address = *serverAddress
-	cfg.StoreInterval = *storeInterval
-	cfg.FileStoragePath = *fileStoragePath
-	cfg.Restore = *restore
-
-	// Парсим переменные окружения (приоритет выше флагов)
-	if err := env.Parse(&cfg); err != nil {
-		logger.Fatal("Ошибка при парсинге переменных окружения", zap.Error(err))
+	// Загружаем конфигурацию
+	cfg, err := config.LoadServerConfig()
+	if err != nil {
+		logger.Fatal("Ошибка при загрузке конфигурации", zap.Error(err))
 	}
 
 	// Инициализируем хранилище с файловой персистентностью
@@ -116,10 +93,12 @@ func main() {
 	<-stop
 	logger.Info("Получен сигнал остановки, завершаем работу...")
 
-	// Graceful shutdown с таймаутом
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// Graceful shutdown с настраиваемым таймаутом
+	shutdownTimeout := time.Duration(cfg.ShutdownTimeout) * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 
+	logger.Info("Начинаем graceful shutdown", zap.Int("timeout_sec", cfg.ShutdownTimeout))
 	if err := server.Shutdown(ctx); err != nil {
 		logger.Error("Ошибка при остановке сервера", zap.Error(err))
 	}

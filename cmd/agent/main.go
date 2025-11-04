@@ -1,14 +1,12 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"time"
 
 	"github.com/Agamariel/go-metrics/internal/agent"
 	"github.com/Agamariel/go-metrics/internal/config"
-	"github.com/caarlos0/env/v6"
 	"go.uber.org/zap"
 )
 
@@ -21,37 +19,10 @@ func main() {
 	}
 	defer logger.Sync()
 
-	// Значения по умолчанию
-	cfg := config.NewAgentConfig()
-
-	// Определяем флаги командной строки
-	serverAddress := flag.String("a", cfg.Address, "адрес эндпоинта HTTP-сервера")
-	reportInterval := flag.Int("r", cfg.ReportInterval, "частота отправки метрик на сервер (в секундах)")
-	pollInterval := flag.Int("p", cfg.PollInterval, "частота опроса метрик из пакета runtime (в секундах)")
-
-	flag.Parse()
-
-	// Проверяем, что не было передано лишних аргументов
-	if flag.NArg() > 0 {
-		logger.Fatal("Ошибка: неизвестные аргументы", zap.Strings("args", flag.Args()))
-	}
-
-	// Применяем значения из флагов
-	cfg.Address = *serverAddress
-	cfg.ReportInterval = *reportInterval
-	cfg.PollInterval = *pollInterval
-
-	// Парсим переменные окружения (приоритет выше флагов)
-	if err := env.Parse(&cfg); err != nil {
-		logger.Fatal("Ошибка при парсинге переменных окружения", zap.Error(err))
-	}
-
-	// Минимальные проверки значений
-	if cfg.ReportInterval <= 0 {
-		logger.Fatal("Ошибка: reportInterval должен быть положительным числом", zap.Int("reportInterval", cfg.ReportInterval))
-	}
-	if cfg.PollInterval <= 0 {
-		logger.Fatal("Ошибка: pollInterval должен быть положительным числом", zap.Int("pollInterval", cfg.PollInterval))
+	// Загружаем конфигурацию
+	cfg, err := config.LoadAgentConfig()
+	if err != nil {
+		logger.Fatal("Ошибка при загрузке конфигурации", zap.Error(err))
 	}
 
 	// Преобразуем интервалы в time.Duration

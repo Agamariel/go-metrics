@@ -4,11 +4,27 @@ import (
 	"encoding/json"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agamariel/go-metrics/internal/models"
 	"go.uber.org/zap"
 )
+
+// ticker определяет минимальный интерфейс для таймера
+type ticker interface {
+	C() <-chan time.Time
+	Stop()
+}
+
+// timeTicker — простая обёртка над time.Ticker
+type timeTicker struct {
+	*time.Ticker
+}
+
+func (t *timeTicker) C() <-chan time.Time {
+	return t.Ticker.C
+}
 
 // FileStorage — обёртка над MemStorage с персистентностью в файл
 type FileStorage struct {
@@ -19,7 +35,8 @@ type FileStorage struct {
 	logger        *zap.Logger
 	mu            sync.RWMutex
 	stopChan      chan struct{}
-	ticker        *time.Ticker
+	ticker        ticker
+	saveCount     atomic.Int64 // счетчик операций сохранения для отладки
 }
 
 // FileStorageConfig — конфигурация для FileStorage
@@ -28,6 +45,7 @@ type FileStorageConfig struct {
 	StoreInterval int
 	Restore       bool
 	Logger        *zap.Logger
+	Ticker        ticker
 }
 
 // NewFileStorage создаёт новый FileStorage
@@ -39,6 +57,7 @@ func NewFileStorage(config FileStorageConfig) (*FileStorage, error) {
 		syncWrite:     config.StoreInterval == 0,
 		logger:        config.Logger,
 		stopChan:      make(chan struct{}),
+		ticker:        config.Ticker, // если не передан (nil) - создадим в startPeriodicSave
 	}
 
 	// Загружаем данные из файла если нужно
@@ -103,7 +122,14 @@ func (fs *FileStorage) saveToFile() error {
 	// Сохраняем в JSON с отступами для читаемости
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
-	return encoder.Encode(metrics)
+	if err := encoder.Encode(metrics); err != nil {
+		return err
+	}
+
+	// Инкрементируем счетчик успешных сохранений
+	fs.saveCount.Add(1)
+
+	return nil
 }
 
 // loadFromFile загружает метрики из JSON файла
@@ -135,18 +161,28 @@ func (fs *FileStorage) loadFromFile() error {
 
 // startPeriodicSave запускает горутину для периодического сохранения
 func (fs *FileStorage) startPeriodicSave() {
-	fs.ticker = time.NewTicker(time.Duration(fs.storeInterval) * time.Second)
+	// Создаем ticker если не был передан
+	if fs.ticker == nil {
+		fs.ticker = &timeTicker{time.NewTicker(time.Duration(fs.storeInterval) * time.Second)}
+	}
 
 	fs.logger.Info("Периодическое сохранение метрик активировано", zap.Int("interval_sec", fs.storeInterval))
 
 	go func() {
 		for {
 			select {
-			case <-fs.ticker.C:
+			case <-fs.ticker.C():
 				if err := fs.saveToFile(); err != nil {
-					fs.logger.Error("Ошибка при сохранении метрик", zap.String("file", fs.filePath), zap.Error(err))
+					fs.logger.Error("Ошибка при сохранении метрик",
+						zap.String("file", fs.filePath),
+						zap.Int64("total_saves", fs.saveCount.Load()),
+						zap.Error(err),
+					)
 				} else {
-					fs.logger.Debug("Метрики успешно сохранены", zap.String("file", fs.filePath))
+					fs.logger.Debug("Метрики успешно сохранены",
+						zap.String("file", fs.filePath),
+						zap.Int64("total_saves", fs.saveCount.Load()),
+					)
 				}
 			case <-fs.stopChan:
 				return
@@ -165,12 +201,24 @@ func (fs *FileStorage) Close() error {
 
 	// Финальное сохранение
 	if err := fs.saveToFile(); err != nil {
-		fs.logger.Error("Ошибка при финальном сохранении метрик", zap.String("file", fs.filePath), zap.Error(err))
+		fs.logger.Error("Ошибка при финальном сохранении метрик",
+			zap.String("file", fs.filePath),
+			zap.Int64("total_saves", fs.saveCount.Load()),
+			zap.Error(err),
+		)
 		return err
 	}
 
-	fs.logger.Info("Метрики успешно сохранены перед выходом", zap.String("file", fs.filePath))
+	fs.logger.Info("Метрики успешно сохранены перед выходом",
+		zap.String("file", fs.filePath),
+		zap.Int64("total_saves", fs.saveCount.Load()),
+	)
 	return nil
+}
+
+// GetSaveCount возвращает общее количество операций сохранения
+func (fs *FileStorage) GetSaveCount() int64 {
+	return fs.saveCount.Load()
 }
 
 // Убедимся, что FileStorage удовлетворяет интерфейсу Storage
