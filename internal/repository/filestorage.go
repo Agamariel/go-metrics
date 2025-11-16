@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Agamariel/go-metrics/internal/logger"
 	"github.com/Agamariel/go-metrics/internal/models"
 	"go.uber.org/zap"
 )
@@ -32,7 +33,7 @@ type FileStorage struct {
 	filePath      string
 	storeInterval int  // в секундах, 0 = синхронное сохранение
 	syncWrite     bool // true если storeInterval == 0
-	logger        *zap.Logger
+	logger        logger.Logger
 	mu            sync.RWMutex
 	stopChan      chan struct{}
 	ticker        ticker
@@ -44,18 +45,23 @@ type FileStorageConfig struct {
 	FilePath      string
 	StoreInterval int
 	Restore       bool
-	Logger        *zap.Logger
+	Logger        logger.Logger
 	Ticker        ticker
 }
 
 // NewFileStorage создаёт новый FileStorage
 func NewFileStorage(config FileStorageConfig) (*FileStorage, error) {
+	log := config.Logger
+	if log == nil {
+		log = logger.Nop()
+	}
+
 	fs := &FileStorage{
 		mem:           NewMemStorage(),
 		filePath:      config.FilePath,
 		storeInterval: config.StoreInterval,
 		syncWrite:     config.StoreInterval == 0,
-		logger:        config.Logger,
+		logger:        log,
 		stopChan:      make(chan struct{}),
 		ticker:        config.Ticker, // если не передан (nil) - создадим в startPeriodicSave
 	}

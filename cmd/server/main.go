@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/Agamariel/go-metrics/internal/config"
+	"github.com/Agamariel/go-metrics/internal/config/db"
 	"github.com/Agamariel/go-metrics/internal/handler"
+	"github.com/Agamariel/go-metrics/internal/logger"
 	custommiddleware "github.com/Agamariel/go-metrics/internal/middleware"
 	"github.com/Agamariel/go-metrics/internal/repository"
 	"github.com/Agamariel/go-metrics/internal/service"
@@ -21,17 +23,34 @@ import (
 
 func main() {
 	// Инициализируем zap логгер
-	logger, err := zap.NewDevelopment()
+	zapLogger, err := zap.NewDevelopment()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Ошибка при инициализации логгера: %v\n", err)
 		os.Exit(1)
 	}
-	defer logger.Sync()
+	defer zapLogger.Sync()
+
+	// Создаем адаптер для нашего интерфейса Logger
+	log := logger.NewZapAdapter(zapLogger)
 
 	// Загружаем конфигурацию
 	cfg, err := config.LoadServerConfig()
 	if err != nil {
-		logger.Fatal("Ошибка при загрузке конфигурации", zap.Error(err))
+		log.Fatal("Ошибка при загрузке конфигурации", zap.Error(err))
+	}
+
+	// Инициализируем подключение к базе данных (если указан DSN)
+	var database *db.DB
+	if cfg.DatabaseDSN != "" {
+		database, err = db.New(context.Background(), db.Config{
+			DSN: cfg.DatabaseDSN,
+		}, log)
+		if err != nil {
+			log.Fatal("Ошибка при подключении к базе данных", zap.Error(err))
+		}
+		log.Info("База данных подключена")
+	} else {
+		log.Info("База данных не настроена (DSN не указан)")
 	}
 
 	// Инициализируем хранилище с файловой персистентностью
@@ -39,26 +58,30 @@ func main() {
 		FilePath:      cfg.FileStoragePath,
 		StoreInterval: cfg.StoreInterval,
 		Restore:       cfg.Restore,
-		Logger:        logger,
+		Logger:        log,
 	})
 	if err != nil {
-		logger.Fatal("Ошибка при инициализации хранилища", zap.Error(err))
+		log.Fatal("Ошибка при инициализации хранилища", zap.Error(err))
 	}
 
 	// Создаём сервис с бизнес-логикой
 	metricsService := service.NewMetricsService(storage)
 
 	h := handler.NewMetricsHandler(metricsService)
+
+	// Создаём ping handler для проверки БД
+	dbHandler := handler.NewDbHandler(database, log)
+
 	r := chi.NewRouter()
 
 	// Добавляем middleware
 	r.Use(custommiddleware.GzipMiddleware) // Сжатие gzip для всех эндпоинтов через нашу middleware
 	// У роутера есть встроенная middleware для сжатия ответов gzip
 	//r.Use(middleware.Compress(1)) // уровень сжатия 1, сжимаются типы из дефолтного списка
-	r.Use(custommiddleware.Logger(logger)) // Кастомное логирование с zap
-	r.Use(middleware.Recoverer)            // Восстановление после паники
-	r.Use(middleware.RequestID)            // Добавление request ID
-	r.Use(middleware.RealIP)               // Определение реального IP клиента
+	r.Use(custommiddleware.Logger(log)) // Кастомное логирование через интерфейс
+	r.Use(middleware.Recoverer)         // Восстановление после паники
+	r.Use(middleware.RequestID)         // Добавление request ID
+	r.Use(middleware.RealIP)            // Определение реального IP клиента
 
 	// Настраиваем маршруты с использованием chi
 	r.Post("/update/{type}/{name}/{value}", h.UpdateMetricHandler)
@@ -67,6 +90,9 @@ func main() {
 	// JSON API эндпоинты
 	r.Post("/update/", h.UpdateMetricJSONHandler)
 	r.Post("/value/", h.GetMetricJSONHandler)
+
+	// Проверка соединения с БД
+	r.Get("/ping", dbHandler.PingDB)
 
 	// Список всех метрик
 	r.Get("/", h.ListMetricsHandler)
@@ -83,30 +109,37 @@ func main() {
 
 	// Запускаем сервер в отдельной горутине
 	go func() {
-		logger.Info("Сервер запущен", zap.String("address", cfg.Address))
+		log.Info("Сервер запущен", zap.String("address", cfg.Address))
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Fatal("Ошибка сервера", zap.Error(err))
+			log.Fatal("Ошибка сервера", zap.Error(err))
 		}
 	}()
 
 	// Ожидаем сигнал остановки
 	<-stop
-	logger.Info("Получен сигнал остановки, завершаем работу...")
+	log.Info("Получен сигнал остановки, завершаем работу...")
 
 	// Graceful shutdown с настраиваемым таймаутом
 	shutdownTimeout := time.Duration(cfg.ShutdownTimeout) * time.Second
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 
-	logger.Info("Начинаем graceful shutdown", zap.Int("timeout_sec", cfg.ShutdownTimeout))
+	log.Info("Начинаем graceful shutdown", zap.Int("timeout_sec", cfg.ShutdownTimeout))
 	if err := server.Shutdown(ctx); err != nil {
-		logger.Error("Ошибка при остановке сервера", zap.Error(err))
+		log.Error("Ошибка при остановке сервера", zap.Error(err))
+	}
+
+	// Закрываем подключение к базе
+	if database != nil {
+		if err := database.Close(log); err != nil {
+			log.Error("Ошибка при закрытии подключения к БД", zap.Error(err))
+		}
 	}
 
 	// Закрываем хранилище (сохраняет метрики)
 	if err := storage.Close(); err != nil {
-		logger.Error("Ошибка при закрытии хранилища", zap.Error(err))
+		log.Error("Ошибка при закрытии хранилища", zap.Error(err))
 	}
 
-	logger.Info("Сервер остановлен")
+	log.Info("Сервер остановлен")
 }
