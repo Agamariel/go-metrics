@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -12,14 +13,25 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// metricsService определяет интерфейс для работы с метриками.
+type metricsService interface {
+	UpdateMetricByPath(path string) error
+	UpdateGauge(name string, value float64) error
+	UpdateCounter(name string, delta int64) error
+	GetMetric(name, mType string) (models.Metrics, error)
+	GetAllMetrics() []models.Metrics
+}
+
 // MetricsHandler — HTTP-обработчик метрик.
 type MetricsHandler struct {
-	service  *service.MetricsService
+	service  metricsService
 	template *template.Template
 }
 
 // NewMetricsHandler — конструктор.
-func NewMetricsHandler(s *service.MetricsService) *MetricsHandler {
+// Принимает любой тип, реализующий интерфейс metricsService.
+// service.MetricsService автоматически удовлетворяет этому интерфейсу.
+func NewMetricsHandler(s metricsService) *MetricsHandler {
 	// Загружаем шаблон один раз при создании хэндлера
 	_, filename, _, _ := runtime.Caller(0)
 	dir := filepath.Dir(filename)
@@ -146,4 +158,98 @@ func (h *MetricsHandler) ListMetricsHandler(w http.ResponseWriter, r *http.Reque
 	if err := h.template.Execute(w, views); err != nil {
 		http.Error(w, "template execution error", http.StatusInternalServerError)
 	}
+}
+
+// UpdateMetricJSONHandler обрабатывает POST /update
+// Принимает метрику в формате JSON и сохраняет её
+func (h *MetricsHandler) UpdateMetricJSONHandler(w http.ResponseWriter, r *http.Request) {
+	// Проверяем Content-Type
+	if r.Header.Get("Content-Type") != "application/json" {
+		http.Error(w, "Content-Type must be application/json", http.StatusBadRequest)
+		return
+	}
+
+	var metric models.Metrics
+
+	// Декодируем JSON из тела запроса
+	if err := json.NewDecoder(r.Body).Decode(&metric); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Валидация обязательных полей
+	if metric.ID == "" || metric.MType == "" {
+		http.Error(w, "Missing required fields: id or type", http.StatusBadRequest)
+		return
+	}
+
+	// Проверяем тип метрики и наличие соответствующего значения
+	switch metric.MType {
+	case models.Gauge:
+		if metric.Value == nil {
+			http.Error(w, "Missing value for gauge metric", http.StatusBadRequest)
+			return
+		}
+		// Сохраняем gauge метрику
+		if err := h.service.UpdateGauge(metric.ID, *metric.Value); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+	case models.Counter:
+		if metric.Delta == nil {
+			http.Error(w, "Missing delta for counter metric", http.StatusBadRequest)
+			return
+		}
+		// Сохраняем counter метрику
+		if err := h.service.UpdateCounter(metric.ID, *metric.Delta); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+	default:
+		http.Error(w, "Invalid metric type", http.StatusBadRequest)
+		return
+	}
+
+	// Возвращаем обновлённую метрику
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(metric)
+}
+
+// GetMetricJSONHandler обрабатывает POST /value
+// Возвращает значение метрики в формате JSON
+func (h *MetricsHandler) GetMetricJSONHandler(w http.ResponseWriter, r *http.Request) {
+	// Проверяем Content-Type
+	if r.Header.Get("Content-Type") != "application/json" {
+		http.Error(w, "Content-Type must be application/json", http.StatusBadRequest)
+		return
+	}
+
+	var request models.Metrics
+
+	// Декодируем JSON из тела запроса
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Валидация обязательных полей
+	if request.ID == "" || request.MType == "" {
+		http.Error(w, "Missing required fields: id or type", http.StatusBadRequest)
+		return
+	}
+
+	// Получаем метрику из сервиса
+	metric, err := h.service.GetMetric(request.ID, request.MType)
+	if err != nil {
+		http.Error(w, "Metric not found", http.StatusNotFound)
+		return
+	}
+
+	// Возвращаем метрику в формате JSON
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(metric)
 }

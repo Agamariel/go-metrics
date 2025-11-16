@@ -1,0 +1,53 @@
+package config
+
+import (
+	"flag"
+	"fmt"
+
+	"github.com/caarlos0/env/v6"
+)
+
+// AgentConfig содержит конфигурацию агента
+type AgentConfig struct {
+	Address        string `env:"ADDRESS"`
+	ReportInterval int    `env:"REPORT_INTERVAL"`
+	PollInterval   int    `env:"POLL_INTERVAL"`
+}
+
+// LoadAgentConfig загружает конфигурацию агента из флагов и переменных окружения
+// Приоритет: переменные окружения > флаги командной строки > значения по умолчанию
+func LoadAgentConfig() (AgentConfig, error) {
+	// Значения по умолчанию
+	cfg := AgentConfig{
+		Address:        "localhost:8080",
+		ReportInterval: 10,
+		PollInterval:   2,
+	}
+
+	// Определяем флаги командной строки
+	flag.StringVar(&cfg.Address, "a", cfg.Address, "адрес эндпоинта HTTP-сервера")
+	flag.IntVar(&cfg.ReportInterval, "r", cfg.ReportInterval, "частота отправки метрик на сервер (в секундах)")
+	flag.IntVar(&cfg.PollInterval, "p", cfg.PollInterval, "частота опроса метрик из пакета runtime (в секундах)")
+
+	flag.Parse()
+
+	// Проверяем, что не было передано лишних аргументов
+	if flag.NArg() > 0 {
+		return cfg, fmt.Errorf("неизвестные аргументы: %v", flag.Args())
+	}
+
+	// Парсим переменные окружения (приоритет выше флагов)
+	if err := env.Parse(&cfg); err != nil {
+		return cfg, fmt.Errorf("ошибка при парсинге переменных окружения: %w", err)
+	}
+
+	// Валидация
+	if cfg.ReportInterval <= 0 {
+		return cfg, fmt.Errorf("reportInterval должен быть положительным числом, получено: %d", cfg.ReportInterval)
+	}
+	if cfg.PollInterval <= 0 {
+		return cfg, fmt.Errorf("pollInterval должен быть положительным числом, получено: %d", cfg.PollInterval)
+	}
+
+	return cfg, nil
+}
