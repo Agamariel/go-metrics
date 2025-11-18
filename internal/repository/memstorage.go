@@ -91,5 +91,10 @@ func (m *MemStorage) GetAllMetrics() []models.Metrics {
 	return all
 }
 
+// Close закрывает хранилище (для MemStorage ничего не делает)
+func (m *MemStorage) Close() error {
+	return nil
+}
+
 // Убедимся, что MemStorage удовлетворяет интерфейсу Storage
 var _ Storage = (*MemStorage)(nil)

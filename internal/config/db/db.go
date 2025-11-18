@@ -4,10 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/Agamariel/go-metrics/internal/logger"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose/v3"
 	"go.uber.org/zap"
 )
 
@@ -63,9 +66,17 @@ func New(ctx context.Context, cfg Config, log logger.Logger) (*DB, error) {
 		zap.Int("max_idle_conns", maxIdleConns),
 	)
 
-	return &DB{
+	dbWrapper := &DB{
 		DB: db,
-	}, nil
+	}
+
+	// Применяем миграции
+	if err := dbWrapper.Migrate(ctx, log); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("ошибка применения миграций: %w", err)
+	}
+
+	return dbWrapper, nil
 }
 
 func (db *DB) Ping(ctx context.Context, log logger.Logger) error {
@@ -75,6 +86,52 @@ func (db *DB) Ping(ctx context.Context, log logger.Logger) error {
 		}
 		return err
 	}
+	return nil
+}
+
+// Migrate применяет миграции
+func (db *DB) Migrate(ctx context.Context, log logger.Logger) error {
+	if log == nil {
+		log = logger.Nop()
+	}
+
+	// Находим директорию migrations относительно корня проекта
+	// по условиям миграции распологаются в определенной папке,
+	// а embedfs goose не поддерживает ../../* пути
+	wd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("ошибка получения рабочей директории: %w", err)
+	}
+
+	var migrationsPath string
+	currentDir := wd
+	maxDepth := 3
+	for depth := 0; depth < maxDepth; depth++ {
+		testPath := filepath.Join(currentDir, "migrations")
+		if info, err := os.Stat(testPath); err == nil && info.IsDir() {
+			migrationsPath = testPath
+			break
+		}
+		parent := filepath.Dir(currentDir)
+		if parent == currentDir {
+			break
+		}
+		currentDir = parent
+	}
+
+	if migrationsPath == "" {
+		return fmt.Errorf("миграции не найдены")
+	}
+
+	if err := goose.SetDialect("postgres"); err != nil {
+		return fmt.Errorf("ошибка установки диалекта: %w", err)
+	}
+
+	if err := goose.UpContext(ctx, db.DB, migrationsPath); err != nil {
+		return fmt.Errorf("ошибка применения миграций: %w", err)
+	}
+
+	log.Info("Миграции успешно применены", zap.String("dir", migrationsPath))
 	return nil
 }
 

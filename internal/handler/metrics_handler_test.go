@@ -81,6 +81,10 @@ func (m *MockStorage) GetAllMetrics() []models.Metrics {
 	return all
 }
 
+func (m *MockStorage) Close() error {
+	return nil
+}
+
 func createRequestWithParams(method, path string, params map[string]string) *http.Request {
 	req := httptest.NewRequest(method, path, nil)
 	rctx := chi.NewRouteContext()
@@ -163,9 +167,9 @@ func TestUpdateMetricHandlerInvalidPath(t *testing.T) {
 
 			handler.UpdateMetricHandler(w, req)
 
-		if w.Code != http.StatusBadRequest && w.Code != http.StatusNotFound {
-			t.Errorf("Expected status %d or %d for %s, got %d", http.StatusBadRequest, http.StatusNotFound, tt.name, w.Code)
-		}
+			if w.Code != http.StatusBadRequest && w.Code != http.StatusNotFound {
+				t.Errorf("Expected status %d or %d for %s, got %d", http.StatusBadRequest, http.StatusNotFound, tt.name, w.Code)
+			}
 		})
 	}
 }

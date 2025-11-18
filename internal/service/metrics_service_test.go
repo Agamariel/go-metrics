@@ -37,6 +37,10 @@ func (m *MockStorage) GetAllMetrics() []models.Metrics {
 	return all
 }
 
+func (m *MockStorage) Close() error {
+	return nil
+}
+
 func TestNewMetricsService(t *testing.T) {
 	storage := NewMockStorage()
 	service := NewMetricsService(storage)

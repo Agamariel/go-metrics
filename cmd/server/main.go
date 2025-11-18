@@ -39,8 +39,11 @@ func main() {
 		log.Fatal("Ошибка при загрузке конфигурации", zap.Error(err))
 	}
 
-	// Инициализируем подключение к базе данных (если указан DSN)
+	// Инициализируем хранилище
+	var storage repository.Storage
 	var database *db.DB
+
+	// PostgreSQL -> File -> Memory
 	if cfg.DatabaseDSN != "" {
 		database, err = db.New(context.Background(), db.Config{
 			DSN: cfg.DatabaseDSN,
@@ -48,20 +51,23 @@ func main() {
 		if err != nil {
 			log.Fatal("Ошибка при подключении к базе данных", zap.Error(err))
 		}
-		log.Info("База данных подключена")
+		storage = repository.NewPostgresStorage(database.DB, log)
+		log.Info("Используется хранилище PostgreSQL")
+	} else if cfg.FileStoragePath != "" {
+		fileStorage, err := repository.NewFileStorage(repository.FileStorageConfig{
+			FilePath:      cfg.FileStoragePath,
+			StoreInterval: cfg.StoreInterval,
+			Restore:       cfg.Restore,
+			Logger:        log,
+		})
+		if err != nil {
+			log.Fatal("Ошибка при инициализации файлового хранилища", zap.Error(err))
+		}
+		storage = fileStorage
+		log.Info("Используется файловое хранилище", zap.String("path", cfg.FileStoragePath))
 	} else {
-		log.Info("База данных не настроена (DSN не указан)")
-	}
-
-	// Инициализируем хранилище с файловой персистентностью
-	storage, err := repository.NewFileStorage(repository.FileStorageConfig{
-		FilePath:      cfg.FileStoragePath,
-		StoreInterval: cfg.StoreInterval,
-		Restore:       cfg.Restore,
-		Logger:        log,
-	})
-	if err != nil {
-		log.Fatal("Ошибка при инициализации хранилища", zap.Error(err))
+		storage = repository.NewMemStorage()
+		log.Info("Используется in-memory хранилище")
 	}
 
 	// Создаём сервис с бизнес-логикой
@@ -129,16 +135,16 @@ func main() {
 		log.Error("Ошибка при остановке сервера", zap.Error(err))
 	}
 
-	// Закрываем подключение к базе
+	// Закрываем хранилище (сохраняет метрики)
+	if err := storage.Close(); err != nil {
+		log.Error("Ошибка при закрытии хранилища", zap.Error(err))
+	}
+
+	// Закрываем подключение к базе данных
 	if database != nil {
 		if err := database.Close(log); err != nil {
 			log.Error("Ошибка при закрытии подключения к БД", zap.Error(err))
 		}
-	}
-
-	// Закрываем хранилище (сохраняет метрики)
-	if err := storage.Close(); err != nil {
-		log.Error("Ошибка при закрытии хранилища", zap.Error(err))
 	}
 
 	log.Info("Сервер остановлен")

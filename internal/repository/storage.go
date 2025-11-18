@@ -8,4 +8,5 @@ type Storage interface {
 	UpdateMetric(m models.Metrics) error
 	GetMetric(id string, mType string) (models.Metrics, bool)
 	GetAllMetrics() []models.Metrics
+	Close() error
 }
