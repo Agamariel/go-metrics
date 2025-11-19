@@ -13,18 +13,18 @@ type DB interface {
 	Ping(ctx context.Context, log logger.Logger) error
 }
 
-// DbHandler — HTTP-обработчик для проверки соединения с базой данных
-type DbHandler struct {
+// DBHandler — HTTP-обработчик для проверки соединения с базой данных
+type DBHandler struct {
 	db     DB
 	logger logger.Logger
 }
 
-// NewDbHandler создает новый хендлер для проверки БД
-func NewDbHandler(database DB, log logger.Logger) *DbHandler {
+// NewDBHandler создает новый хендлер для проверки БД
+func NewDBHandler(database DB, log logger.Logger) *DBHandler {
 	if log == nil {
 		log = logger.Nop()
 	}
-	return &DbHandler{
+	return &DBHandler{
 		db:     database,
 		logger: log,
 	}
@@ -32,7 +32,7 @@ func NewDbHandler(database DB, log logger.Logger) *DbHandler {
 
 // PingDB обрабатывает GET /ping
 // Возвращает 200 OK при успехе, 500 Internal Server Error при ошибке
-func (h *DbHandler) PingDB(w http.ResponseWriter, r *http.Request) {
+func (h *DBHandler) PingDB(w http.ResponseWriter, r *http.Request) {
 	// Если БД не инициализирована, возвращаем ошибку
 	if h.db == nil {
 		http.Error(w, "База данных не сконфигурирована", http.StatusInternalServerError)

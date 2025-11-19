@@ -76,7 +76,7 @@ func main() {
 	h := handler.NewMetricsHandler(metricsService)
 
 	// Создаём ping handler для проверки БД
-	dbHandler := handler.NewDbHandler(database, log)
+	dbHandler := handler.NewDBHandler(database, log)
 
 	r := chi.NewRouter()
 

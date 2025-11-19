@@ -23,7 +23,7 @@ func (m *MockDB) Ping(ctx context.Context, log logger.Logger) error {
 	return args.Error(0)
 }
 
-func TestNewDbHandler(t *testing.T) {
+func TestNewDBHandler(t *testing.T) {
 	tests := []struct {
 		name   string
 		db     DB
@@ -43,7 +43,7 @@ func TestNewDbHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler := NewDbHandler(tt.db, tt.logger)
+			handler := NewDBHandler(tt.db, tt.logger)
 			assert.NotNil(t, handler)
 			assert.NotNil(t, handler.logger)
 			assert.Equal(t, tt.db, handler.db)
@@ -51,7 +51,7 @@ func TestNewDbHandler(t *testing.T) {
 	}
 }
 
-func TestDbHandler_PingDB_Success(t *testing.T) {
+func TestDBHandler_PingDB_Success(t *testing.T) {
 	// Arrange
 	mockDB := new(MockDB)
 	mockLogger := logger.NewMock()
@@ -59,7 +59,7 @@ func TestDbHandler_PingDB_Success(t *testing.T) {
 	// Ожидаем вызов Ping, который вернет nil (успех)
 	mockDB.On("Ping", mock.Anything, mockLogger).Return(nil)
 
-	handler := NewDbHandler(mockDB, mockLogger)
+	handler := NewDBHandler(mockDB, mockLogger)
 
 	req := httptest.NewRequest(http.MethodGet, "/ping", nil)
 	w := httptest.NewRecorder()
@@ -73,7 +73,7 @@ func TestDbHandler_PingDB_Success(t *testing.T) {
 	mockDB.AssertExpectations(t)
 }
 
-func TestDbHandler_PingDB_DatabaseError(t *testing.T) {
+func TestDBHandler_PingDB_DatabaseError(t *testing.T) {
 	// Arrange
 	mockDB := new(MockDB)
 	mockLogger := logger.NewMock()
@@ -84,7 +84,7 @@ func TestDbHandler_PingDB_DatabaseError(t *testing.T) {
 	mockDB.On("Ping", mock.Anything, mockLogger).Return(expectedErr)
 	mockLogger.On("Error", mock.Anything, mock.Anything).Maybe()
 
-	handler := NewDbHandler(mockDB, mockLogger)
+	handler := NewDBHandler(mockDB, mockLogger)
 
 	req := httptest.NewRequest(http.MethodGet, "/ping", nil)
 	w := httptest.NewRecorder()
@@ -98,10 +98,10 @@ func TestDbHandler_PingDB_DatabaseError(t *testing.T) {
 	mockDB.AssertExpectations(t)
 }
 
-func TestDbHandler_PingDB_NilDatabase(t *testing.T) {
+func TestDBHandler_PingDB_NilDatabase(t *testing.T) {
 	// Arrange
 	mockLogger := logger.NewMock()
-	handler := NewDbHandler(nil, mockLogger)
+	handler := NewDBHandler(nil, mockLogger)
 
 	req := httptest.NewRequest(http.MethodGet, "/ping", nil)
 	w := httptest.NewRecorder()
@@ -114,7 +114,7 @@ func TestDbHandler_PingDB_NilDatabase(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "База данных не сконфигурирована")
 }
 
-func TestDbHandler_PingDB_WithContext(t *testing.T) {
+func TestDBHandler_PingDB_WithContext(t *testing.T) {
 	// Arrange
 	mockDB := new(MockDB)
 	mockLogger := logger.NewMock()
@@ -126,7 +126,7 @@ func TestDbHandler_PingDB_WithContext(t *testing.T) {
 		return ok
 	}), mockLogger).Return(nil)
 
-	handler := NewDbHandler(mockDB, mockLogger)
+	handler := NewDBHandler(mockDB, mockLogger)
 
 	req := httptest.NewRequest(http.MethodGet, "/ping", nil)
 	w := httptest.NewRecorder()
@@ -139,7 +139,7 @@ func TestDbHandler_PingDB_WithContext(t *testing.T) {
 	mockDB.AssertExpectations(t)
 }
 
-func TestDbHandler_PingDB_ContextCancellation(t *testing.T) {
+func TestDBHandler_PingDB_ContextCancellation(t *testing.T) {
 	// Arrange
 	mockDB := new(MockDB)
 	mockLogger := logger.NewMock()
@@ -149,7 +149,7 @@ func TestDbHandler_PingDB_ContextCancellation(t *testing.T) {
 	mockDB.On("Ping", mock.Anything, mockLogger).Return(expectedErr)
 	mockLogger.On("Error", mock.Anything, mock.Anything).Maybe()
 
-	handler := NewDbHandler(mockDB, mockLogger)
+	handler := NewDBHandler(mockDB, mockLogger)
 
 	// Создаем запрос с уже отмененным контекстом
 	ctx, cancel := context.WithCancel(context.Background())
@@ -167,13 +167,13 @@ func TestDbHandler_PingDB_ContextCancellation(t *testing.T) {
 }
 
 // Бенчмарк для проверки производительности
-func BenchmarkDbHandler_PingDB(b *testing.B) {
+func BenchmarkDBHandler_PingDB(b *testing.B) {
 	mockDB := new(MockDB)
 	mockLogger := logger.Nop()
 
 	mockDB.On("Ping", mock.Anything, mockLogger).Return(nil)
 
-	handler := NewDbHandler(mockDB, mockLogger)
+	handler := NewDBHandler(mockDB, mockLogger)
 
 	req := httptest.NewRequest(http.MethodGet, "/ping", nil)
 
