@@ -100,6 +100,21 @@ func (fs *FileStorage) UpdateMetric(metric models.Metrics) error {
 	return nil
 }
 
+// UpdateMetrics реализует интерфейс Storage для пакетного обновления
+func (fs *FileStorage) UpdateMetrics(metrics []models.Metrics) error {
+	// Обновляем в памяти
+	if err := fs.mem.UpdateMetrics(metrics); err != nil {
+		return err
+	}
+
+	// Синхронно сохраняем в файл если нужно
+	if fs.syncWrite {
+		return fs.saveToFile()
+	}
+
+	return nil
+}
+
 // GetMetric реализует интерфейс Storage
 func (fs *FileStorage) GetMetric(id string, mType string) (models.Metrics, bool) {
 	return fs.mem.GetMetric(id, mType)

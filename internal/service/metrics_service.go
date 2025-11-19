@@ -79,6 +79,14 @@ func (s *MetricsService) UpdateMetric(metric models.Metrics) error {
 	return s.storage.UpdateMetric(metric)
 }
 
+// UpdateMetrics — обновляет множество метрик
+func (s *MetricsService) UpdateMetrics(metrics []models.Metrics) error {
+	if len(metrics) == 0 {
+		return nil
+	}
+	return s.storage.UpdateMetrics(metrics)
+}
+
 // UpdateGauge — обновляет gauge метрику
 func (s *MetricsService) UpdateGauge(name string, value float64) error {
 	if strings.TrimSpace(name) == "" {

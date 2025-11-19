@@ -23,6 +23,14 @@ func (m *MockStorage) UpdateMetric(metric models.Metrics) error {
 	return nil
 }
 
+func (m *MockStorage) UpdateMetrics(metrics []models.Metrics) error {
+	for _, metric := range metrics {
+		key := metric.ID + ":" + metric.MType
+		m.metrics[key] = metric
+	}
+	return nil
+}
+
 func (m *MockStorage) GetMetric(id string, mType string) (models.Metrics, bool) {
 	key := id + ":" + mType
 	metric, found := m.metrics[key]

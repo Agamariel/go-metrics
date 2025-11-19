@@ -68,6 +68,80 @@ func (p *PostgresStorage) UpdateMetric(metric models.Metrics) error {
 	return nil
 }
 
+// UpdateMetrics реализует интерфейс Storage для пакетного обновления
+func (p *PostgresStorage) UpdateMetrics(metrics []models.Metrics) error {
+	if len(metrics) == 0 {
+		return nil
+	}
+
+	// Начинаем транзакцию
+	tx, err := p.db.Begin()
+	if err != nil {
+		return fmt.Errorf("ошибка начала транзакции: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Подготавливаем запросы для каждого типа метрики
+	stmtGauge, err := tx.Prepare(
+		`INSERT INTO metrics (id, type, value) 
+		 VALUES ($1, $2, $3) 
+		 ON CONFLICT (id, type) DO UPDATE SET value = $3`,
+	)
+	if err != nil {
+		return fmt.Errorf("ошибка подготовки запроса для gauge: %w", err)
+	}
+	defer stmtGauge.Close()
+
+	stmtCounter, err := tx.Prepare(
+		`INSERT INTO metrics (id, type, delta) 
+		 VALUES ($1, $2, $3) 
+		 ON CONFLICT (id, type) DO UPDATE SET delta = metrics.delta + $3`,
+	)
+	if err != nil {
+		return fmt.Errorf("ошибка подготовки запроса для counter: %w", err)
+	}
+	defer stmtCounter.Close()
+
+	// Выполняем обновления
+	for _, metric := range metrics {
+		switch metric.MType {
+		case models.Gauge:
+			if metric.Value == nil {
+				return fmt.Errorf("значение gauge не может быть nil для метрики %s", metric.ID)
+			}
+			_, err := stmtGauge.Exec(metric.ID, metric.MType, *metric.Value)
+			if err != nil {
+				p.logger.Error("Ошибка при обновлении gauge метрики в батче",
+					zap.String("id", metric.ID),
+					zap.Error(err),
+				)
+				return fmt.Errorf("ошибка обновления gauge %s: %w", metric.ID, err)
+			}
+		case models.Counter:
+			if metric.Delta == nil {
+				return fmt.Errorf("значение counter не может быть nil для метрики %s", metric.ID)
+			}
+			_, err := stmtCounter.Exec(metric.ID, metric.MType, *metric.Delta)
+			if err != nil {
+				p.logger.Error("Ошибка при обновлении counter метрики в батче",
+					zap.String("id", metric.ID),
+					zap.Error(err),
+				)
+				return fmt.Errorf("ошибка обновления counter %s: %w", metric.ID, err)
+			}
+		default:
+			return fmt.Errorf("неизвестный тип метрики: %s для метрики %s", metric.MType, metric.ID)
+		}
+	}
+
+	// Коммитим транзакцию
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("ошибка коммита транзакции: %w", err)
+	}
+
+	return nil
+}
+
 // GetMetric реализует интерфейс Storage
 func (p *PostgresStorage) GetMetric(id string, mType string) (models.Metrics, bool) {
 	var result models.Metrics

@@ -39,6 +39,26 @@ func (m *MemStorage) UpdateMetric(metric models.Metrics) error {
 	return nil
 }
 
+// UpdateMetrics реализует интерфейс Storage для пакетного обновления.
+func (m *MemStorage) UpdateMetrics(metrics []models.Metrics) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, metric := range metrics {
+		switch metric.MType {
+		case models.Gauge:
+			if metric.Value != nil {
+				m.gauges[metric.ID] = *metric.Value
+			}
+		case models.Counter:
+			if metric.Delta != nil {
+				m.counters[metric.ID] += *metric.Delta
+			}
+		}
+	}
+	return nil
+}
+
 func (m *MemStorage) GetMetric(id string, mType string) (models.Metrics, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

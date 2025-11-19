@@ -101,32 +101,66 @@ func (s *MetricsSender) SendMetricJSON(metric models.Metrics) error {
 	return nil
 }
 
-// SendAllMetrics отправляет все метрики на сервер используя JSON API
+// SendAllMetrics отправляет все метрики на сервер используя JSON API батчами
 func (s *MetricsSender) SendAllMetrics(gauges map[string]float64, counters map[string]int64) error {
-	// Отправляем gauge метрики
+	// Формируем список всех метрик
+	var metrics []models.Metrics
+
+	// Добавляем gauge метрики
 	for name, value := range gauges {
 		v := value // копируем значение для создания указателя
-		metric := models.Metrics{
+		metrics = append(metrics, models.Metrics{
 			ID:    name,
 			MType: models.Gauge,
 			Value: &v,
-		}
-		if err := s.SendMetricJSON(metric); err != nil {
-			return fmt.Errorf("failed to send gauge metric %s: %w", name, err)
-		}
+		})
 	}
 
-	// Отправляем counter метрики
+	// Добавляем counter метрики
 	for name, value := range counters {
 		v := value // копируем значение для создания указателя
-		metric := models.Metrics{
+		metrics = append(metrics, models.Metrics{
 			ID:    name,
 			MType: models.Counter,
 			Delta: &v,
-		}
-		if err := s.SendMetricJSON(metric); err != nil {
-			return fmt.Errorf("failed to send counter metric %s: %w", name, err)
-		}
+		})
+	}
+
+	// Не отправляем пустые батчи
+	if len(metrics) == 0 {
+		return nil
+	}
+
+	// Отправляем все метрики одним батчем
+	return s.SendMetricsBatch(metrics)
+}
+
+// SendMetricsBatch отправляет батч метрик на сервер через /updates/
+func (s *MetricsSender) SendMetricsBatch(metrics []models.Metrics) error {
+	if len(metrics) == 0 {
+		return nil
+	}
+
+	url := fmt.Sprintf("%s/updates/", s.serverURL)
+
+	// Сжимаем данные
+	compressed, err := compressJSON(metrics)
+	if err != nil {
+		return fmt.Errorf("failed to compress data: %w", err)
+	}
+
+	resp, err := s.client.R().
+		SetHeader("Content-Type", "application/json").
+		SetHeader("Content-Encoding", "gzip").
+		SetBody(compressed).
+		Post(url)
+
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+
+	if resp.StatusCode() != http.StatusOK {
+		return fmt.Errorf("server returned status: %d, body: %s", resp.StatusCode(), resp.Body())
 	}
 
 	return nil

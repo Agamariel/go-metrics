@@ -79,8 +79,8 @@ func TestSendAllMetrics(t *testing.T) {
 
 	// Создаем тестовый сервер
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Проверяем, что это JSON API
-		if r.URL.Path == "/update/" {
+		// Проверяем, что это батч API
+		if r.URL.Path == "/updates/" {
 			// Читаем тело запроса
 			var reader io.Reader = r.Body
 
@@ -96,15 +96,19 @@ func TestSendAllMetrics(t *testing.T) {
 				reader = gz
 			}
 
-			// Декодируем JSON
+			// Декодируем JSON массив метрик
 			body, _ := io.ReadAll(reader)
-			var metric models.Metrics
-			if err := json.Unmarshal(body, &metric); err != nil {
+			var metrics []models.Metrics
+			if err := json.Unmarshal(body, &metrics); err != nil {
 				t.Errorf("Failed to decode JSON: %v", err)
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
-			receivedMetrics[metric.ID] = metric
+
+			// Сохраняем все полученные метрики
+			for _, metric := range metrics {
+				receivedMetrics[metric.ID] = metric
+			}
 		}
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -150,6 +154,10 @@ func TestSendAllMetrics(t *testing.T) {
 func TestSendAllMetricsWithError(t *testing.T) {
 	// Создаем тестовый сервер, который возвращает ошибку
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Проверяем, что запрос идет на правильный эндпоинт
+		if r.URL.Path != "/updates/" {
+			t.Errorf("Expected path '/updates/', got '%s'", r.URL.Path)
+		}
 		w.WriteHeader(http.StatusBadRequest)
 	}))
 	defer server.Close()

@@ -18,6 +18,7 @@ type metricsService interface {
 	UpdateMetricByPath(path string) error
 	UpdateGauge(name string, value float64) error
 	UpdateCounter(name string, delta int64) error
+	UpdateMetrics(metrics []models.Metrics) error
 	GetMetric(name, mType string) (models.Metrics, error)
 	GetAllMetrics() []models.Metrics
 }
@@ -252,4 +253,60 @@ func (h *MetricsHandler) GetMetricJSONHandler(w http.ResponseWriter, r *http.Req
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(metric)
+}
+
+// UpdateMetricsBatchHandler обрабатывает POST /updates/
+// Принимает множество метрик в формате JSON ([]Metrics) и сохраняет их
+func (h *MetricsHandler) UpdateMetricsBatchHandler(w http.ResponseWriter, r *http.Request) {
+	// Проверяем Content-Type
+	if r.Header.Get("Content-Type") != "application/json" {
+		http.Error(w, "Content-Type должен быть application/json", http.StatusBadRequest)
+		return
+	}
+
+	var metrics []models.Metrics
+
+	if err := json.NewDecoder(r.Body).Decode(&metrics); err != nil {
+		http.Error(w, "Неверный JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Проверяем, что массив не пустой
+	if len(metrics) == 0 {
+		http.Error(w, "Массив метрик пуст", http.StatusBadRequest)
+		return
+	}
+
+	// Валидация обязательных полей для каждой метрики
+	for i, metric := range metrics {
+		if metric.ID == "" || metric.MType == "" {
+			http.Error(w, fmt.Sprintf("Пропущены обязательные поля: id или type в индексе %d", i), http.StatusBadRequest)
+			return
+		}
+
+		switch metric.MType {
+		case models.Gauge:
+			if metric.Value == nil {
+				http.Error(w, fmt.Sprintf("Пропущены значения для gauge метрики в индексе %d", i), http.StatusBadRequest)
+				return
+			}
+		case models.Counter:
+			if metric.Delta == nil {
+				http.Error(w, fmt.Sprintf("Пропущены значения для counter метрики в индексе %d", i), http.StatusBadRequest)
+				return
+			}
+		default:
+			http.Error(w, fmt.Sprintf("Пропущен тип метрики в индексе %d: %s", i, metric.MType), http.StatusBadRequest)
+			return
+		}
+	}
+
+	if err := h.service.UpdateMetrics(metrics); err != nil {
+		http.Error(w, fmt.Sprintf("Ошибка при обновлении метрик: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(metrics)
 }

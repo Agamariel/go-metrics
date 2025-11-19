@@ -35,6 +35,18 @@ func (m *MockStorage) UpdateMetric(metric models.Metrics) error {
 	return nil
 }
 
+func (m *MockStorage) UpdateMetrics(metrics []models.Metrics) error {
+	for _, metric := range metrics {
+		if metric.MType == models.Gauge && metric.Value != nil {
+			m.gauges[metric.ID] = *metric.Value
+		}
+		if metric.MType == models.Counter && metric.Delta != nil {
+			m.counters[metric.ID] += *metric.Delta
+		}
+	}
+	return nil
+}
+
 func (m *MockStorage) GetMetric(id string, mType string) (models.Metrics, bool) {
 	var result models.Metrics
 	result.ID = id

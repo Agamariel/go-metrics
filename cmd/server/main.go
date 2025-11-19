@@ -95,6 +95,7 @@ func main() {
 
 	// JSON API эндпоинты
 	r.Post("/update/", h.UpdateMetricJSONHandler)
+	r.Post("/updates/", h.UpdateMetricsBatchHandler)
 	r.Post("/value/", h.GetMetricJSONHandler)
 
 	// Проверка соединения с БД
