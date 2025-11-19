@@ -209,12 +209,36 @@ func (p *PostgresStorage) GetMetric(ctx context.Context, id string, mType string
 
 // GetAllMetrics реализует интерфейс Storage
 func (p *PostgresStorage) GetAllMetrics(ctx context.Context) ([]models.Metrics, error) {
-	var rows *sql.Rows
-	var err error
+	var all []models.Metrics
 
-	err = retry.Do(ctx, p.retry.maxAttempts, p.retry.strategy, retry.IsPostgresRetriableError, func() error {
-		rows, err = p.db.QueryContext(ctx, `SELECT id, type, value, delta FROM metrics`)
+	err := retry.Do(ctx, p.retry.maxAttempts, p.retry.strategy, retry.IsPostgresRetriableError, func() error {
+		rows, err := p.db.QueryContext(ctx, `SELECT id, type, value, delta FROM metrics`)
 		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var m models.Metrics
+			var value sql.NullFloat64
+			var delta sql.NullInt64
+
+			if scanErr := rows.Scan(&m.ID, &m.MType, &value, &delta); scanErr != nil {
+				p.logger.Error("Ошибка при сканировании метрики", zap.Error(scanErr))
+				continue
+			}
+
+			if m.MType == models.Gauge && value.Valid {
+				v := value.Float64
+				m.Value = &v
+			} else if m.MType == models.Counter && delta.Valid {
+				d := delta.Int64
+				m.Delta = &d
+			}
+			all = append(all, m)
+		}
+
+		if err := rows.Err(); err != nil {
 			return err
 		}
 		return nil
@@ -223,36 +247,6 @@ func (p *PostgresStorage) GetAllMetrics(ctx context.Context) ([]models.Metrics, 
 	if err != nil {
 		p.logger.Error("Ошибка при получении всех метрик", zap.Error(err))
 		return nil, fmt.Errorf("get all metrics: %w", err)
-	}
-
-	defer rows.Close()
-
-	var all []models.Metrics
-	for rows.Next() {
-		var m models.Metrics
-		var value sql.NullFloat64
-		var delta sql.NullInt64
-
-		if scanErr := rows.Scan(&m.ID, &m.MType, &value, &delta); scanErr != nil {
-			p.logger.Error("Ошибка при сканировании метрики", zap.Error(scanErr))
-			continue
-		}
-
-		if m.MType == models.Gauge && value.Valid {
-			v := value.Float64
-			m.Value = &v
-		} else if m.MType == models.Counter && delta.Valid {
-			d := delta.Int64
-			m.Delta = &d
-		}
-
-		all = append(all, m)
-	}
-
-	// Проверяем ошибки, возникшие во время итерации
-	if rowsErr := rows.Err(); rowsErr != nil {
-		p.logger.Error("Ошибка при итерации метрик", zap.Error(rowsErr))
-		return nil, fmt.Errorf("rows error: %w", rowsErr)
 	}
 
 	return all, nil
