@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"os"
 	"testing"
 	"time"
@@ -67,7 +68,8 @@ func TestFileStorageWithMockTicker(t *testing.T) {
 		Value: &val,
 	}
 
-	if err := fs.UpdateMetric(metric); err != nil {
+	ctx := context.Background()
+	if err := fs.UpdateMetric(ctx, metric); err != nil {
 		t.Fatalf("Не удалось обновить метрику: %v", err)
 	}
 
@@ -128,7 +130,8 @@ func TestFileStorageSyncMode(t *testing.T) {
 		Value: &val,
 	}
 
-	if err := fs.UpdateMetric(metric); err != nil {
+	ctx := context.Background()
+	if err := fs.UpdateMetric(ctx, metric); err != nil {
 		t.Fatalf("Не удалось обновить метрику: %v", err)
 	}
 

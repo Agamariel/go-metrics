@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Agamariel/go-metrics/internal/models"
+	"github.com/Agamariel/go-metrics/internal/repository"
 	"github.com/Agamariel/go-metrics/internal/service"
 	"github.com/go-chi/chi/v5"
 )
@@ -25,7 +26,7 @@ func NewMockStorage() *MockStorage {
 	}
 }
 
-func (m *MockStorage) UpdateMetric(metric models.Metrics) error {
+func (m *MockStorage) UpdateMetric(ctx context.Context, metric models.Metrics) error {
 	if metric.MType == models.Gauge && metric.Value != nil {
 		m.gauges[metric.ID] = *metric.Value
 	}
@@ -35,7 +36,7 @@ func (m *MockStorage) UpdateMetric(metric models.Metrics) error {
 	return nil
 }
 
-func (m *MockStorage) UpdateMetrics(metrics []models.Metrics) error {
+func (m *MockStorage) UpdateMetrics(ctx context.Context, metrics []models.Metrics) error {
 	for _, metric := range metrics {
 		if metric.MType == models.Gauge && metric.Value != nil {
 			m.gauges[metric.ID] = *metric.Value
@@ -47,7 +48,7 @@ func (m *MockStorage) UpdateMetrics(metrics []models.Metrics) error {
 	return nil
 }
 
-func (m *MockStorage) GetMetric(id string, mType string) (models.Metrics, bool) {
+func (m *MockStorage) GetMetric(ctx context.Context, id string, mType string) (models.Metrics, error) {
 	var result models.Metrics
 	result.ID = id
 	result.MType = mType
@@ -56,23 +57,23 @@ func (m *MockStorage) GetMetric(id string, mType string) (models.Metrics, bool) 
 	case models.Gauge:
 		val, ok := m.gauges[id]
 		if !ok {
-			return models.Metrics{}, false
+			return models.Metrics{}, repository.ErrNotFound
 		}
 		result.Value = &val
-		return result, true
+		return result, nil
 	case models.Counter:
 		val, ok := m.counters[id]
 		if !ok {
-			return models.Metrics{}, false
+			return models.Metrics{}, repository.ErrNotFound
 		}
 		result.Delta = &val
-		return result, true
+		return result, nil
 	default:
-		return models.Metrics{}, false
+		return models.Metrics{}, repository.ErrNotFound
 	}
 }
 
-func (m *MockStorage) GetAllMetrics() []models.Metrics {
+func (m *MockStorage) GetAllMetrics(ctx context.Context) []models.Metrics {
 	var all []models.Metrics
 	for id, val := range m.gauges {
 		v := val

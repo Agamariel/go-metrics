@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -15,12 +16,12 @@ import (
 
 // metricsService определяет интерфейс для работы с метриками.
 type metricsService interface {
-	UpdateMetricByPath(path string) error
-	UpdateGauge(name string, value float64) error
-	UpdateCounter(name string, delta int64) error
-	UpdateMetrics(metrics []models.Metrics) error
-	GetMetric(name, mType string) (models.Metrics, error)
-	GetAllMetrics() []models.Metrics
+	UpdateMetricByPath(ctx context.Context, path string) error
+	UpdateGauge(ctx context.Context, name string, value float64) error
+	UpdateCounter(ctx context.Context, name string, delta int64) error
+	UpdateMetrics(ctx context.Context, metrics []models.Metrics) error
+	GetMetric(ctx context.Context, name, mType string) (models.Metrics, error)
+	GetAllMetrics(ctx context.Context) []models.Metrics
 }
 
 // MetricsHandler — HTTP-обработчик метрик.
@@ -61,7 +62,7 @@ func (h *MetricsHandler) UpdateMetricHandler(w http.ResponseWriter, r *http.Requ
 	// Формируем путь для совместимости с существующей бизнес-логикой
 	path := fmt.Sprintf("%s/%s/%s", metricType, metricName, metricValue)
 
-	err := h.service.UpdateMetricByPath(path)
+	err := h.service.UpdateMetricByPath(r.Context(), path)
 	if err != nil {
 		switch err {
 		case service.ErrInvalidName:
@@ -85,7 +86,7 @@ func (h *MetricsHandler) GetMetricHandler(w http.ResponseWriter, r *http.Request
 	metricType := chi.URLParam(r, "type")
 	metricName := chi.URLParam(r, "name")
 
-	metric, err := h.service.GetMetric(metricName, metricType)
+	metric, err := h.service.GetMetric(r.Context(), metricName, metricType)
 	if err != nil {
 		switch err {
 		case service.ErrInvalidName:
@@ -128,7 +129,7 @@ type MetricView struct {
 // ListMetricsHandler обрабатывает GET /
 // Возвращает HTML-страницу со списком всех метрик
 func (h *MetricsHandler) ListMetricsHandler(w http.ResponseWriter, r *http.Request) {
-	metrics := h.service.GetAllMetrics()
+	metrics := h.service.GetAllMetrics(r.Context())
 
 	// Преобразуем метрики в структуры для отображения
 	var views []MetricView
@@ -192,7 +193,7 @@ func (h *MetricsHandler) UpdateMetricJSONHandler(w http.ResponseWriter, r *http.
 			return
 		}
 		// Сохраняем gauge метрику
-		if err := h.service.UpdateGauge(metric.ID, *metric.Value); err != nil {
+		if err := h.service.UpdateGauge(r.Context(), metric.ID, *metric.Value); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -203,7 +204,7 @@ func (h *MetricsHandler) UpdateMetricJSONHandler(w http.ResponseWriter, r *http.
 			return
 		}
 		// Сохраняем counter метрику
-		if err := h.service.UpdateCounter(metric.ID, *metric.Delta); err != nil {
+		if err := h.service.UpdateCounter(r.Context(), metric.ID, *metric.Delta); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -243,7 +244,7 @@ func (h *MetricsHandler) GetMetricJSONHandler(w http.ResponseWriter, r *http.Req
 	}
 
 	// Получаем метрику из сервиса
-	metric, err := h.service.GetMetric(request.ID, request.MType)
+	metric, err := h.service.GetMetric(r.Context(), request.ID, request.MType)
 	if err != nil {
 		http.Error(w, "Metric not found", http.StatusNotFound)
 		return
@@ -301,7 +302,7 @@ func (h *MetricsHandler) UpdateMetricsBatchHandler(w http.ResponseWriter, r *htt
 		}
 	}
 
-	if err := h.service.UpdateMetrics(metrics); err != nil {
+	if err := h.service.UpdateMetrics(r.Context(), metrics); err != nil {
 		http.Error(w, fmt.Sprintf("Ошибка при обновлении метрик: %v", err), http.StatusInternalServerError)
 		return
 	}

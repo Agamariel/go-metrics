@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
@@ -64,7 +65,8 @@ func main() {
 			gauges := collector.GetGauges()
 			counters := collector.GetCounters()
 
-			if err := sender.SendAllMetrics(gauges, counters); err != nil {
+			ctx := context.Background()
+			if err := sender.SendAllMetrics(ctx, gauges, counters); err != nil {
 				logger.Error("Ошибка при отправке метрик", zap.Error(err))
 			} else {
 				logger.Info("Метрики успешно отправлены")

@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"sync"
@@ -86,9 +87,9 @@ func NewFileStorage(config FileStorageConfig) (*FileStorage, error) {
 }
 
 // UpdateMetric реализует интерфейс Storage
-func (fs *FileStorage) UpdateMetric(metric models.Metrics) error {
+func (fs *FileStorage) UpdateMetric(ctx context.Context, metric models.Metrics) error {
 	// Обновляем в памяти
-	if err := fs.mem.UpdateMetric(metric); err != nil {
+	if err := fs.mem.UpdateMetric(ctx, metric); err != nil {
 		return err
 	}
 
@@ -101,9 +102,9 @@ func (fs *FileStorage) UpdateMetric(metric models.Metrics) error {
 }
 
 // UpdateMetrics реализует интерфейс Storage для пакетного обновления
-func (fs *FileStorage) UpdateMetrics(metrics []models.Metrics) error {
+func (fs *FileStorage) UpdateMetrics(ctx context.Context, metrics []models.Metrics) error {
 	// Обновляем в памяти
-	if err := fs.mem.UpdateMetrics(metrics); err != nil {
+	if err := fs.mem.UpdateMetrics(ctx, metrics); err != nil {
 		return err
 	}
 
@@ -116,13 +117,13 @@ func (fs *FileStorage) UpdateMetrics(metrics []models.Metrics) error {
 }
 
 // GetMetric реализует интерфейс Storage
-func (fs *FileStorage) GetMetric(id string, mType string) (models.Metrics, bool) {
-	return fs.mem.GetMetric(id, mType)
+func (fs *FileStorage) GetMetric(ctx context.Context, id string, mType string) (models.Metrics, error) {
+	return fs.mem.GetMetric(ctx, id, mType)
 }
 
 // GetAllMetrics реализует интерфейс Storage
-func (fs *FileStorage) GetAllMetrics() []models.Metrics {
-	return fs.mem.GetAllMetrics()
+func (fs *FileStorage) GetAllMetrics(ctx context.Context) []models.Metrics {
+	return fs.mem.GetAllMetrics(ctx)
 }
 
 // saveToFile сохраняет все метрики в JSON файл
@@ -131,7 +132,8 @@ func (fs *FileStorage) saveToFile() error {
 	defer fs.mu.Unlock()
 
 	// Получаем все метрики
-	metrics := fs.mem.GetAllMetrics()
+	ctx := context.Background()
+	metrics := fs.mem.GetAllMetrics(ctx)
 
 	// Открываем файл для записи (создаём, если не существует)
 	file, err := os.Create(fs.filePath)
@@ -173,8 +175,11 @@ func (fs *FileStorage) loadFromFile() error {
 	}
 
 	// Загружаем метрики
+	ctx := context.Background()
 	for _, metric := range metrics {
-		fs.mem.UpdateMetric(metric)
+		if err := fs.mem.UpdateMetric(ctx, metric); err != nil {
+			return err
+		}
 	}
 
 	return nil

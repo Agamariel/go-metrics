@@ -2,6 +2,7 @@ package agent
 
 import (
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -126,7 +127,8 @@ func TestSendAllMetrics(t *testing.T) {
 		"Counter2": 200,
 	}
 
-	err := sender.SendAllMetrics(gauges, counters)
+	ctx := context.Background()
+	err := sender.SendAllMetrics(ctx, gauges, counters)
 	if err != nil {
 		t.Errorf("SendAllMetrics failed: %v", err)
 	}
@@ -170,7 +172,8 @@ func TestSendAllMetricsWithError(t *testing.T) {
 
 	counters := map[string]int64{}
 
-	err := sender.SendAllMetrics(gauges, counters)
+	ctx := context.Background()
+	err := sender.SendAllMetrics(ctx, gauges, counters)
 	if err == nil {
 		t.Error("Expected error when server returns error, got nil")
 	}

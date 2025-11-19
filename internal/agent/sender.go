@@ -3,12 +3,14 @@ package agent
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/Agamariel/go-metrics/internal/models"
+	"github.com/Agamariel/go-metrics/pkg/retry"
 	"github.com/go-resty/resty/v2"
 )
 
@@ -102,7 +104,7 @@ func (s *MetricsSender) SendMetricJSON(metric models.Metrics) error {
 }
 
 // SendAllMetrics отправляет все метрики на сервер используя JSON API батчами
-func (s *MetricsSender) SendAllMetrics(gauges map[string]float64, counters map[string]int64) error {
+func (s *MetricsSender) SendAllMetrics(ctx context.Context, gauges map[string]float64, counters map[string]int64) error {
 	// Формируем список всех метрик
 	var metrics []models.Metrics
 
@@ -132,36 +134,45 @@ func (s *MetricsSender) SendAllMetrics(gauges map[string]float64, counters map[s
 	}
 
 	// Отправляем все метрики одним батчем
-	return s.SendMetricsBatch(metrics)
+	return s.SendMetricsBatch(ctx, metrics)
 }
 
 // SendMetricsBatch отправляет батч метрик на сервер через /updates/
-func (s *MetricsSender) SendMetricsBatch(metrics []models.Metrics) error {
+func (s *MetricsSender) SendMetricsBatch(ctx context.Context, metrics []models.Metrics) error {
 	if len(metrics) == 0 {
 		return nil
 	}
 
-	url := fmt.Sprintf("%s/updates/", s.serverURL)
-
-	// Сжимаем данные
 	compressed, err := compressJSON(metrics)
 	if err != nil {
-		return fmt.Errorf("failed to compress data: %w", err)
+		return fmt.Errorf("compress: %w", err)
 	}
 
-	resp, err := s.client.R().
-		SetHeader("Content-Type", "application/json").
-		SetHeader("Content-Encoding", "gzip").
-		SetBody(compressed).
-		Post(url)
+	url := s.serverURL + "/updates/"
+	strategy := retry.Linear(1*time.Second, 3*time.Second, 5*time.Second)
 
-	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
-	}
+	// 1 начальная + 3 повтора
+	const maxAttempts = 4
 
-	if resp.StatusCode() != http.StatusOK {
-		return fmt.Errorf("server returned status: %d, body: %s", resp.StatusCode(), resp.Body())
-	}
+	return retry.Do(ctx, maxAttempts, strategy, retry.IsHTTPRetriable,
+		func() error {
+			resp, err := s.client.R().
+				SetContext(ctx).
+				SetHeader("Content-Type", "application/json").
+				SetHeader("Content-Encoding", "gzip").
+				SetBody(compressed).
+				Post(url)
 
-	return nil
+			if err != nil {
+				return fmt.Errorf("post: %w", err)
+			}
+			if sc := resp.StatusCode(); sc != http.StatusOK {
+				if sc >= 500 && sc < 600 {
+					return fmt.Errorf("%w: status %d body %s", retry.ErrRetriable, sc, resp.Body())
+				}
+				return fmt.Errorf("non-retriable status %d body %s", sc, resp.Body())
+			}
+			return nil
+		},
+	)
 }

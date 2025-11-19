@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/Agamariel/go-metrics/internal/models"
@@ -24,6 +26,7 @@ func TestNewMemStorage(t *testing.T) {
 
 func TestUpdateMetricGauge(t *testing.T) {
 	storage := NewMemStorage()
+	ctx := context.Background()
 
 	value := 123.456
 	metric := models.Metrics{
@@ -32,14 +35,14 @@ func TestUpdateMetricGauge(t *testing.T) {
 		Value: &value,
 	}
 
-	err := storage.UpdateMetric(metric)
+	err := storage.UpdateMetric(ctx, metric)
 	if err != nil {
 		t.Errorf("UpdateMetric failed: %v", err)
 	}
 
 	// Проверяем, что метрика сохранена
-	result, ok := storage.GetMetric("TestGauge", models.Gauge)
-	if !ok {
+	result, err := storage.GetMetric(ctx, "TestGauge", models.Gauge)
+	if err != nil {
 		t.Fatal("Metric not found after update")
 	}
 
@@ -54,6 +57,7 @@ func TestUpdateMetricGauge(t *testing.T) {
 
 func TestUpdateMetricCounter(t *testing.T) {
 	storage := NewMemStorage()
+	ctx := context.Background()
 
 	delta1 := int64(10)
 	metric1 := models.Metrics{
@@ -62,14 +66,14 @@ func TestUpdateMetricCounter(t *testing.T) {
 		Delta: &delta1,
 	}
 
-	err := storage.UpdateMetric(metric1)
+	err := storage.UpdateMetric(ctx, metric1)
 	if err != nil {
 		t.Errorf("UpdateMetric failed: %v", err)
 	}
 
 	// Проверяем, что счетчик = 10
-	result, ok := storage.GetMetric("TestCounter", models.Counter)
-	if !ok {
+	result, err := storage.GetMetric(ctx, "TestCounter", models.Counter)
+	if err != nil {
 		t.Fatal("Counter not found after update")
 	}
 
@@ -89,14 +93,14 @@ func TestUpdateMetricCounter(t *testing.T) {
 		Delta: &delta2,
 	}
 
-	err = storage.UpdateMetric(metric2)
+	err = storage.UpdateMetric(ctx, metric2)
 	if err != nil {
 		t.Errorf("UpdateMetric failed: %v", err)
 	}
 
 	// Проверяем, что счетчик = 15 (накопительный)
-	result, ok = storage.GetMetric("TestCounter", models.Counter)
-	if !ok {
+	result, err = storage.GetMetric(ctx, "TestCounter", models.Counter)
+	if err != nil {
 		t.Fatal("Counter not found after second update")
 	}
 
@@ -107,22 +111,24 @@ func TestUpdateMetricCounter(t *testing.T) {
 
 func TestGetMetricNotFound(t *testing.T) {
 	storage := NewMemStorage()
+	ctx := context.Background()
 
-	_, ok := storage.GetMetric("NonExistent", models.Gauge)
-	if ok {
-		t.Error("Expected false for non-existent metric")
+	_, err := storage.GetMetric(ctx, "NonExistent", models.Gauge)
+	if !errors.Is(err, ErrNotFound) {
+		t.Error("Expected ErrNotFound for non-existent metric")
 	}
 }
 
 func TestConcurrentUpdates(t *testing.T) {
 	storage := NewMemStorage()
+	ctx := context.Background()
 
 	// Запускаем 100 горутин, каждая обновляет счетчик
 	done := make(chan bool)
 	for i := 0; i < 100; i++ {
 		go func() {
 			delta := int64(1)
-			storage.UpdateMetric(models.Metrics{
+			storage.UpdateMetric(ctx, models.Metrics{
 				ID:    "TestCounter",
 				MType: models.Counter,
 				Delta: &delta,
