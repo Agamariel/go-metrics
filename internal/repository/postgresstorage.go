@@ -214,17 +214,17 @@ func (p *PostgresStorage) GetAllMetrics(ctx context.Context) []models.Metrics {
 
 	err = retry.Do(ctx, p.retry.maxAttempts, p.retry.strategy, retry.IsPostgresRetriableError, func() error {
 		rows, err = p.db.QueryContext(ctx, `SELECT id, type, value, delta FROM metrics`)
-
-		return err
+		if err != nil {
+			return err
+		}
+		return nil
 	})
 
 	if err != nil {
 		p.logger.Error("Ошибка при получении всех метрик", zap.Error(err))
 		return nil
 	}
-	if rows == nil {
-		return nil
-	}
+
 	defer rows.Close()
 
 	var all []models.Metrics
