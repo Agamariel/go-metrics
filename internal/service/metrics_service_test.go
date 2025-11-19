@@ -42,12 +42,12 @@ func (m *MockStorage) GetMetric(ctx context.Context, id string, mType string) (m
 	return metric, nil
 }
 
-func (m *MockStorage) GetAllMetrics(ctx context.Context) []models.Metrics {
+func (m *MockStorage) GetAllMetrics(ctx context.Context) ([]models.Metrics, error) {
 	var all []models.Metrics
 	for _, metric := range m.metrics {
 		all = append(all, metric)
 	}
-	return all
+	return all, nil
 }
 
 func (m *MockStorage) Close() error {
@@ -226,7 +226,10 @@ func TestGetAllMetrics(t *testing.T) {
 	})
 
 	// Получаем все метрики
-	all := service.GetAllMetrics(ctx)
+	all, err := service.GetAllMetrics(ctx)
+	if err != nil {
+		t.Errorf("GetAllMetrics failed: %v", err)
+	}
 
 	if len(all) != 3 {
 		t.Errorf("Expected 3 metrics, got %d", len(all))
@@ -238,7 +241,10 @@ func TestGetAllMetricsEmpty(t *testing.T) {
 	service := NewMetricsService(storage)
 	ctx := context.Background()
 
-	all := service.GetAllMetrics(ctx)
+	all, err := service.GetAllMetrics(ctx)
+	if err != nil {
+		t.Errorf("GetAllMetrics failed: %v", err)
+	}
 
 	if len(all) != 0 {
 		t.Errorf("Expected 0 metrics, got %d", len(all))

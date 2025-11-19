@@ -73,7 +73,7 @@ func (m *MockStorage) GetMetric(ctx context.Context, id string, mType string) (m
 	}
 }
 
-func (m *MockStorage) GetAllMetrics(ctx context.Context) []models.Metrics {
+func (m *MockStorage) GetAllMetrics(ctx context.Context) ([]models.Metrics, error) {
 	var all []models.Metrics
 	for id, val := range m.gauges {
 		v := val
@@ -91,7 +91,7 @@ func (m *MockStorage) GetAllMetrics(ctx context.Context) []models.Metrics {
 			Delta: &v,
 		})
 	}
-	return all
+	return all, nil
 }
 
 func (m *MockStorage) Close() error {

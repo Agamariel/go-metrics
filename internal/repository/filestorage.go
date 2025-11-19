@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -122,7 +123,7 @@ func (fs *FileStorage) GetMetric(ctx context.Context, id string, mType string) (
 }
 
 // GetAllMetrics реализует интерфейс Storage
-func (fs *FileStorage) GetAllMetrics(ctx context.Context) []models.Metrics {
+func (fs *FileStorage) GetAllMetrics(ctx context.Context) ([]models.Metrics, error) {
 	return fs.mem.GetAllMetrics(ctx)
 }
 
@@ -133,7 +134,10 @@ func (fs *FileStorage) saveToFile() error {
 
 	// Получаем все метрики
 	ctx := context.Background()
-	metrics := fs.mem.GetAllMetrics(ctx)
+	metrics, err := fs.mem.GetAllMetrics(ctx)
+	if err != nil {
+		return fmt.Errorf("ошибка при получении всех метрик: %w", err)
+	}
 
 	// Открываем файл для записи (создаём, если не существует)
 	file, err := os.Create(fs.filePath)

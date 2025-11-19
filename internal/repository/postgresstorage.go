@@ -208,7 +208,7 @@ func (p *PostgresStorage) GetMetric(ctx context.Context, id string, mType string
 }
 
 // GetAllMetrics реализует интерфейс Storage
-func (p *PostgresStorage) GetAllMetrics(ctx context.Context) []models.Metrics {
+func (p *PostgresStorage) GetAllMetrics(ctx context.Context) ([]models.Metrics, error) {
 	var rows *sql.Rows
 	var err error
 
@@ -222,7 +222,7 @@ func (p *PostgresStorage) GetAllMetrics(ctx context.Context) []models.Metrics {
 
 	if err != nil {
 		p.logger.Error("Ошибка при получении всех метрик", zap.Error(err))
-		return nil
+		return nil, fmt.Errorf("get all metrics: %w", err)
 	}
 
 	defer rows.Close()
@@ -252,10 +252,10 @@ func (p *PostgresStorage) GetAllMetrics(ctx context.Context) []models.Metrics {
 	// Проверяем ошибки, возникшие во время итерации
 	if rowsErr := rows.Err(); rowsErr != nil {
 		p.logger.Error("Ошибка при итерации метрик", zap.Error(rowsErr))
-		return nil
+		return nil, fmt.Errorf("rows error: %w", rowsErr)
 	}
 
-	return all
+	return all, nil
 }
 
 // Close закрывает хранилище

@@ -89,7 +89,7 @@ func (m *MemStorage) GetMetric(ctx context.Context, id string, mType string) (mo
 	}
 }
 
-func (m *MemStorage) GetAllMetrics(ctx context.Context) []models.Metrics {
+func (m *MemStorage) GetAllMetrics(ctx context.Context) ([]models.Metrics, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -110,7 +110,7 @@ func (m *MemStorage) GetAllMetrics(ctx context.Context) []models.Metrics {
 			Delta: &v,
 		})
 	}
-	return all
+	return all, nil
 }
 
 // Close закрывает хранилище (для MemStorage ничего не делает)

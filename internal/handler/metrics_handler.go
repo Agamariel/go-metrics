@@ -21,7 +21,7 @@ type metricsService interface {
 	UpdateCounter(ctx context.Context, name string, delta int64) error
 	UpdateMetrics(ctx context.Context, metrics []models.Metrics) error
 	GetMetric(ctx context.Context, name, mType string) (models.Metrics, error)
-	GetAllMetrics(ctx context.Context) []models.Metrics
+	GetAllMetrics(ctx context.Context) ([]models.Metrics, error)
 }
 
 // MetricsHandler — HTTP-обработчик метрик.
@@ -129,7 +129,11 @@ type MetricView struct {
 // ListMetricsHandler обрабатывает GET /
 // Возвращает HTML-страницу со списком всех метрик
 func (h *MetricsHandler) ListMetricsHandler(w http.ResponseWriter, r *http.Request) {
-	metrics := h.service.GetAllMetrics(r.Context())
+	metrics, err := h.service.GetAllMetrics(r.Context())
+	if err != nil {
+		http.Error(w, "Failed to get metrics", http.StatusInternalServerError)
+		return
+	}
 
 	// Преобразуем метрики в структуры для отображения
 	var views []MetricView

@@ -140,6 +140,6 @@ func (s *MetricsService) GetMetric(ctx context.Context, name, mType string) (mod
 }
 
 // GetAllMetrics — получает все метрики.
-func (s *MetricsService) GetAllMetrics(ctx context.Context) []models.Metrics {
+func (s *MetricsService) GetAllMetrics(ctx context.Context) ([]models.Metrics, error) {
 	return s.storage.GetAllMetrics(ctx)
 }
