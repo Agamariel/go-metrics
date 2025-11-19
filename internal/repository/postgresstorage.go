@@ -214,11 +214,15 @@ func (p *PostgresStorage) GetAllMetrics(ctx context.Context) []models.Metrics {
 
 	err = retry.Do(ctx, p.retry.maxAttempts, p.retry.strategy, retry.IsPostgresRetriableError, func() error {
 		rows, err = p.db.QueryContext(ctx, `SELECT id, type, value, delta FROM metrics`)
+
 		return err
 	})
 
 	if err != nil {
 		p.logger.Error("Ошибка при получении всех метрик", zap.Error(err))
+		return nil
+	}
+	if rows == nil {
 		return nil
 	}
 	defer rows.Close()
@@ -229,8 +233,8 @@ func (p *PostgresStorage) GetAllMetrics(ctx context.Context) []models.Metrics {
 		var value sql.NullFloat64
 		var delta sql.NullInt64
 
-		if err := rows.Scan(&m.ID, &m.MType, &value, &delta); err != nil {
-			p.logger.Error("Ошибка при сканировании метрики", zap.Error(err))
+		if scanErr := rows.Scan(&m.ID, &m.MType, &value, &delta); scanErr != nil {
+			p.logger.Error("Ошибка при сканировании метрики", zap.Error(scanErr))
 			continue
 		}
 
@@ -245,8 +249,9 @@ func (p *PostgresStorage) GetAllMetrics(ctx context.Context) []models.Metrics {
 		all = append(all, m)
 	}
 
-	if err := rows.Err(); err != nil {
-		p.logger.Error("Ошибка при итерации метрик", zap.Error(err))
+	// Проверяем ошибки, возникшие во время итерации
+	if rowsErr := rows.Err(); rowsErr != nil {
+		p.logger.Error("Ошибка при итерации метрик", zap.Error(rowsErr))
 		return nil
 	}
 
