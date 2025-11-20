@@ -4,52 +4,128 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/Agamariel/go-metrics/internal/logger"
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/pressly/goose/v3"
 	"go.uber.org/zap"
 )
 
+type DBType string
+
+const (
+	PostgreSQL DBType = "postgresql"
+	SQLite     DBType = "sqlite"
+)
+
+// PoolConfig параметры пула подключений
+type PoolConfig struct {
+	MaxOpenConns    int           // Максимальное количество открытых подключений
+	MaxIdleConns    int           // Максимальное количество неактивных подключений в пуле
+	ConnMaxLifetime time.Duration // Максимальное время жизни подключения
+	ConnMaxIdleTime time.Duration // Максимальное время простоя подключения
+}
+
+// PostgreSQLConfig настройки для PostgreSQL
+type PostgreSQLConfig struct {
+	DSN string
+}
+
+// SQLiteConfig настройки для SQLite
+type SQLiteConfig struct {
+	Path string
+}
+
 // Config содержит конфигурацию подключения к базе данных
 type Config struct {
-	DSN             string
-	MaxOpenConns    int
-	MaxIdleConns    int
-	ConnMaxLifetime time.Duration
-	ConnMaxIdleTime time.Duration
+	Type       DBType
+	Pool       PoolConfig
+	PostgreSQL PostgreSQLConfig
+	SQLite     SQLiteConfig
 }
 
-// DB обертка над *sql.DB
-type DB struct {
-	*sql.DB
-}
-
-// New создает новое подключение к базе данных PostgreSQL
-func New(ctx context.Context, cfg Config, log logger.Logger) (*DB, error) {
-	if cfg.DSN == "" {
-		return nil, fmt.Errorf("DSN не может быть пустым")
+// DefaultPoolConfig - конфигурация пула с значениями по умолчанию
+func DefaultPoolConfig() PoolConfig {
+	return PoolConfig{
+		MaxOpenConns:    25,
+		MaxIdleConns:    5,
+		ConnMaxLifetime: 5 * time.Minute,
+		ConnMaxIdleTime: 3 * time.Minute,
 	}
+}
 
+func NewPostgreSQL(dsn string) Config {
+	return Config{
+		Type: PostgreSQL,
+		PostgreSQL: PostgreSQLConfig{
+			DSN: dsn,
+		},
+		Pool: DefaultPoolConfig(),
+	}
+}
+
+// New создает новое подключение к базе данных и возвращает *sql.DB
+func New(ctx context.Context, cfg Config, log logger.Logger) (*sql.DB, error) {
 	if log == nil {
 		log = logger.Nop()
 	}
 
-	db, err := sql.Open("pgx", cfg.DSN)
+	// Определяем тип БД и DSN
+	var driver string
+	var dsn string
+	var dbType DBType
+
+	// Если тип не указан, но есть DSN в PostgreSQL - используем PostgreSQL (обратная совместимость)
+	if cfg.Type == "" {
+		if cfg.PostgreSQL.DSN != "" {
+			dbType = PostgreSQL
+		} else {
+			return nil, fmt.Errorf("тип базы данных не указан и DSN не найден")
+		}
+	} else {
+		dbType = cfg.Type
+	}
+
+	// Получаем DSN и драйвер в зависимости от типа БД
+	switch dbType {
+	case PostgreSQL:
+		if cfg.PostgreSQL.DSN == "" {
+			return nil, fmt.Errorf("DSN для PostgreSQL не может быть пустым")
+		}
+		driver = "pgx"
+		dsn = cfg.PostgreSQL.DSN
+	case SQLite:
+		if cfg.SQLite.Path == "" {
+			return nil, fmt.Errorf("путь к файлу SQLite не может быть пустым")
+		}
+		driver = "sqlite3"
+		dsn = cfg.SQLite.Path
+	default:
+		return nil, fmt.Errorf("неподдерживаемый тип базы данных: %s", dbType)
+	}
+
+	// Открываем подключение
+	db, err := sql.Open(driver, dsn)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка подключения к БД: %w", err)
 	}
 
-	// если в cfg 0 – ставим дефолт
-	maxOpenConns := maxInt(cfg.MaxOpenConns, 25)
-	maxIdleConns := maxInt(cfg.MaxIdleConns, 5)
+	// Настраиваем пул подключений с использованием значений по умолчанию, если не указаны
+	poolCfg := cfg.Pool
+	if poolCfg.MaxOpenConns == 0 && poolCfg.MaxIdleConns == 0 &&
+		poolCfg.ConnMaxLifetime == 0 && poolCfg.ConnMaxIdleTime == 0 {
+		poolCfg = DefaultPoolConfig()
+	}
+
+	maxOpenConns := maxInt(poolCfg.MaxOpenConns, DefaultPoolConfig().MaxOpenConns)
+	maxIdleConns := maxInt(poolCfg.MaxIdleConns, DefaultPoolConfig().MaxIdleConns)
+	connMaxLifetime := maxDuration(poolCfg.ConnMaxLifetime, DefaultPoolConfig().ConnMaxLifetime)
+	connMaxIdleTime := maxDuration(poolCfg.ConnMaxIdleTime, DefaultPoolConfig().ConnMaxIdleTime)
+
 	db.SetMaxOpenConns(maxOpenConns)
 	db.SetMaxIdleConns(maxIdleConns)
-	db.SetConnMaxLifetime(maxDuration(cfg.ConnMaxLifetime, 5*time.Minute))
-	db.SetConnMaxIdleTime(maxDuration(cfg.ConnMaxIdleTime, 3*time.Minute))
+	db.SetConnMaxLifetime(connMaxLifetime)
+	db.SetConnMaxIdleTime(connMaxIdleTime)
 
 	// Проверяем соединение с таймаутом
 	pingCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -61,85 +137,13 @@ func New(ctx context.Context, cfg Config, log logger.Logger) (*DB, error) {
 	}
 
 	log.Info("Подключение к базе данных установлено",
-		zap.String("driver", "pgx"),
+		zap.String("driver", driver),
+		zap.String("type", string(dbType)),
 		zap.Int("max_open_conns", maxOpenConns),
 		zap.Int("max_idle_conns", maxIdleConns),
 	)
 
-	dbWrapper := &DB{
-		DB: db,
-	}
-
-	// Применяем миграции
-	if err := dbWrapper.Migrate(ctx, log); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("ошибка применения миграций: %w", err)
-	}
-
-	return dbWrapper, nil
-}
-
-func (db *DB) Ping(ctx context.Context, log logger.Logger) error {
-	if err := db.PingContext(ctx); err != nil {
-		if log != nil {
-			log.Error("Ошибка проверки подключения к БД", zap.Error(err))
-		}
-		return err
-	}
-	return nil
-}
-
-// Migrate применяет миграции
-func (db *DB) Migrate(ctx context.Context, log logger.Logger) error {
-	if log == nil {
-		log = logger.Nop()
-	}
-
-	// Находим директорию migrations относительно корня проекта
-	// по условиям миграции распологаются в определенной папке,
-	// а embedfs goose не поддерживает ../../* пути
-	wd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("ошибка получения рабочей директории: %w", err)
-	}
-
-	var migrationsPath string
-	currentDir := wd
-	maxDepth := 3
-	for depth := 0; depth < maxDepth; depth++ {
-		testPath := filepath.Join(currentDir, "migrations")
-		if info, err := os.Stat(testPath); err == nil && info.IsDir() {
-			migrationsPath = testPath
-			break
-		}
-		parent := filepath.Dir(currentDir)
-		if parent == currentDir {
-			break
-		}
-		currentDir = parent
-	}
-
-	if migrationsPath == "" {
-		return fmt.Errorf("миграции не найдены")
-	}
-
-	if err := goose.SetDialect("postgres"); err != nil {
-		return fmt.Errorf("ошибка установки диалекта: %w", err)
-	}
-
-	if err := goose.UpContext(ctx, db.DB, migrationsPath); err != nil {
-		return fmt.Errorf("ошибка применения миграций: %w", err)
-	}
-
-	log.Info("Миграции успешно применены", zap.String("dir", migrationsPath))
-	return nil
-}
-
-func (db *DB) Close(log logger.Logger) error {
-	if log != nil {
-		log.Info("Закрытие подключения к базе данных")
-	}
-	return db.DB.Close()
+	return db, nil
 }
 
 // maxInt хелпер для задания значений по умолчанию

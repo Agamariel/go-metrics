@@ -8,14 +8,13 @@ import (
 
 	"github.com/Agamariel/go-metrics/internal/logger"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNew_EmptyDSN(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
-	cfg := Config{DSN: ""}
+	cfg := Config{Type: PostgreSQL}
 	log := logger.Nop()
 
 	// Act
@@ -24,14 +23,17 @@ func TestNew_EmptyDSN(t *testing.T) {
 	// Assert
 	assert.Error(t, err)
 	assert.Nil(t, db)
-	assert.Contains(t, err.Error(), "DSN не может быть пустым")
+	assert.Contains(t, err.Error(), "DSN для PostgreSQL не может быть пустым")
 }
 
 func TestNew_InvalidDSN(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
 	cfg := Config{
-		DSN: "invalid://connection/string",
+		Type: PostgreSQL,
+		PostgreSQL: PostgreSQLConfig{
+			DSN: "invalid://connection/string",
+		},
 	}
 	log := logger.Nop()
 
@@ -46,9 +48,7 @@ func TestNew_InvalidDSN(t *testing.T) {
 func TestNew_WithNilLogger(t *testing.T) {
 	// Arrange
 	ctx := context.Background()
-	cfg := Config{
-		DSN: "postgres://user:pass@localhost/testdb?sslmode=disable",
-	}
+	cfg := NewPostgreSQL("postgres://user:pass@localhost/testdb?sslmode=disable")
 
 	// Act
 	// Не вызовет панику, так как внутри есть проверка на nil
@@ -70,9 +70,14 @@ func TestNew_DefaultConnectionPoolSettings(t *testing.T) {
 		{
 			name: "use defaults when zero",
 			cfg: Config{
-				DSN:          "postgres://user:pass@localhost/testdb?sslmode=disable",
-				MaxOpenConns: 0,
-				MaxIdleConns: 0,
+				Type: PostgreSQL,
+				PostgreSQL: PostgreSQLConfig{
+					DSN: "postgres://user:pass@localhost/testdb?sslmode=disable",
+				},
+				Pool: PoolConfig{
+					MaxOpenConns: 0,
+					MaxIdleConns: 0,
+				},
 			},
 			expectedMax:  25,
 			expectedIdle: 5,
@@ -80,9 +85,14 @@ func TestNew_DefaultConnectionPoolSettings(t *testing.T) {
 		{
 			name: "use custom values",
 			cfg: Config{
-				DSN:          "postgres://user:pass@localhost/testdb?sslmode=disable",
-				MaxOpenConns: 50,
-				MaxIdleConns: 10,
+				Type: PostgreSQL,
+				PostgreSQL: PostgreSQLConfig{
+					DSN: "postgres://user:pass@localhost/testdb?sslmode=disable",
+				},
+				Pool: PoolConfig{
+					MaxOpenConns: 50,
+					MaxIdleConns: 10,
+				},
 			},
 			expectedMax:  50,
 			expectedIdle: 10,
@@ -92,8 +102,9 @@ func TestNew_DefaultConnectionPoolSettings(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Проверяем только логику установки значений
-			maxOpen := maxInt(tt.cfg.MaxOpenConns, 25)
-			maxIdle := maxInt(tt.cfg.MaxIdleConns, 5)
+			defaultPool := DefaultPoolConfig()
+			maxOpen := maxInt(tt.cfg.Pool.MaxOpenConns, defaultPool.MaxOpenConns)
+			maxIdle := maxInt(tt.cfg.Pool.MaxIdleConns, defaultPool.MaxIdleConns)
 
 			assert.Equal(t, tt.expectedMax, maxOpen)
 			assert.Equal(t, tt.expectedIdle, maxIdle)
@@ -171,83 +182,6 @@ func TestMaxDuration(t *testing.T) {
 	}
 }
 
-func TestDB_Ping_WithMockLogger(t *testing.T) {
-	// Arrange
-	mockLogger := logger.NewMock()
-
-	// Создаем тестовую БД (будет ошибка подключения)
-	sqlDB, err := sql.Open("pgx", "postgres://invalid:invalid@localhost:9999/invalid?sslmode=disable")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	db := &DB{DB: sqlDB}
-
-	// Ожидаем логирование ошибки
-	mockLogger.On("Error", mock.Anything, mock.Anything).Once()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
-
-	// Act
-	err = db.Ping(ctx, mockLogger)
-
-	// Assert
-	assert.Error(t, err)
-	mockLogger.AssertExpectations(t)
-}
-
-func TestDB_Ping_WithNilLogger(t *testing.T) {
-	// Arrange
-	sqlDB, err := sql.Open("pgx", "postgres://invalid:invalid@localhost:9999/invalid?sslmode=disable")
-	require.NoError(t, err)
-	defer sqlDB.Close()
-
-	db := &DB{DB: sqlDB}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
-
-	// Act - не должно быть паники при nil логгере
-	err = db.Ping(ctx, nil)
-
-	// Assert
-	assert.Error(t, err) // Ошибка подключения ожидается
-}
-
-func TestDB_Close_WithLogger(t *testing.T) {
-	// Arrange
-	mockLogger := logger.NewMock()
-
-	sqlDB, err := sql.Open("pgx", "postgres://invalid:invalid@localhost:9999/invalid?sslmode=disable")
-	require.NoError(t, err)
-
-	db := &DB{DB: sqlDB}
-
-	// Ожидаем логирование закрытия
-	mockLogger.On("Info", mock.Anything, mock.Anything).Once()
-
-	// Act
-	err = db.Close(mockLogger)
-
-	// Assert
-	assert.NoError(t, err)
-	mockLogger.AssertExpectations(t)
-}
-
-func TestDB_Close_WithNilLogger(t *testing.T) {
-	// Arrange
-	sqlDB, err := sql.Open("pgx", "postgres://invalid:invalid@localhost:9999/invalid?sslmode=disable")
-	require.NoError(t, err)
-
-	db := &DB{DB: sqlDB}
-
-	// Act - не должно быть паники при nil логгере
-	err = db.Close(nil)
-
-	// Assert
-	assert.NoError(t, err)
-}
-
 func TestConfig_Validation(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -257,31 +191,48 @@ func TestConfig_Validation(t *testing.T) {
 		{
 			name: "valid config",
 			cfg: Config{
-				DSN:             "postgres://user:pass@localhost/db",
-				MaxOpenConns:    25,
-				MaxIdleConns:    5,
-				ConnMaxLifetime: 5 * time.Minute,
-				ConnMaxIdleTime: 3 * time.Minute,
+				Type: PostgreSQL,
+				PostgreSQL: PostgreSQLConfig{
+					DSN: "postgres://user:pass@localhost/db",
+				},
+				Pool: PoolConfig{
+					MaxOpenConns:    25,
+					MaxIdleConns:    5,
+					ConnMaxLifetime: 5 * time.Minute,
+					ConnMaxIdleTime: 3 * time.Minute,
+				},
 			},
 			wantErr: false,
 		},
 		{
 			name: "empty DSN",
 			cfg: Config{
-				DSN: "",
+				Type: PostgreSQL,
 			},
 			wantErr: true,
 		},
 		{
 			name: "zero pool settings (should use defaults)",
 			cfg: Config{
-				DSN:             "postgres://user:pass@localhost/db",
-				MaxOpenConns:    0,
-				MaxIdleConns:    0,
-				ConnMaxLifetime: 0,
-				ConnMaxIdleTime: 0,
+				Type: PostgreSQL,
+				PostgreSQL: PostgreSQLConfig{
+					DSN: "postgres://user:pass@localhost/db",
+				},
+				Pool: PoolConfig{
+					MaxOpenConns:    0,
+					MaxIdleConns:    0,
+					ConnMaxLifetime: 0,
+					ConnMaxIdleTime: 0,
+				},
 			},
 			wantErr: false, // Будут использованы значения по умолчанию
+		},
+		{
+			name: "unsupported DB type",
+			cfg: Config{
+				Type: DBType("unsupported"),
+			},
+			wantErr: true,
 		},
 	}
 
@@ -295,7 +246,8 @@ func TestConfig_Validation(t *testing.T) {
 				// Может быть ошибка подключения, но не ошибка валидации
 				if err != nil {
 					// Проверяем, что это не ошибка валидации
-					assert.NotContains(t, err.Error(), "DSN не может быть пустым")
+					assert.NotContains(t, err.Error(), "DSN для PostgreSQL не может быть пустым")
+					assert.NotContains(t, err.Error(), "неподдерживаемый тип базы данных")
 				}
 			}
 		})
@@ -317,9 +269,7 @@ func TestDB_Integration_SQLite(t *testing.T) {
 
 // Бенчмарк для проверки производительности создания подключения
 func BenchmarkNew(b *testing.B) {
-	cfg := Config{
-		DSN: "postgres://user:pass@localhost/db?sslmode=disable",
-	}
+	cfg := NewPostgreSQL("postgres://user:pass@localhost/db?sslmode=disable")
 	log := logger.Nop()
 	ctx := context.Background()
 
@@ -327,7 +277,54 @@ func BenchmarkNew(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		db, _ := New(ctx, cfg, log)
 		if db != nil {
-			db.Close(log)
+			db.Close()
 		}
+	}
+}
+
+func TestNewPostgreSQL(t *testing.T) {
+	// Arrange
+	dsn := "postgres://user:pass@localhost/testdb?sslmode=disable"
+
+	// Act
+	cfg := NewPostgreSQL(dsn)
+
+	// Assert
+	assert.Equal(t, PostgreSQL, cfg.Type)
+	assert.Equal(t, dsn, cfg.PostgreSQL.DSN)
+	assert.Equal(t, DefaultPoolConfig(), cfg.Pool)
+}
+
+func TestDefaultPoolConfig(t *testing.T) {
+	// Act
+	poolCfg := DefaultPoolConfig()
+
+	// Assert
+	assert.Equal(t, 25, poolCfg.MaxOpenConns)
+	assert.Equal(t, 5, poolCfg.MaxIdleConns)
+	assert.Equal(t, 5*time.Minute, poolCfg.ConnMaxLifetime)
+	assert.Equal(t, 3*time.Minute, poolCfg.ConnMaxIdleTime)
+}
+
+func TestNew_ReturnsSQLDB(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	cfg := NewPostgreSQL("postgres://user:pass@localhost/testdb?sslmode=disable")
+	log := logger.Nop()
+
+	// Act
+	db, err := New(ctx, cfg, log)
+
+	// Assert
+	// Ожидаем ошибку подключения (т.к. БД нет), но проверяем тип возвращаемого значения
+	if err == nil {
+		require.NotNil(t, db)
+		assert.IsType(t, (*sql.DB)(nil), db)
+		if db != nil {
+			db.Close()
+		}
+	} else {
+		// Ошибка подключения ожидается, но тип должен быть правильным
+		assert.Nil(t, db)
 	}
 }

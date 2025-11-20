@@ -8,7 +8,9 @@ import (
 
 	"github.com/Agamariel/go-metrics/internal/logger"
 	"github.com/Agamariel/go-metrics/internal/models"
+	"github.com/Agamariel/go-metrics/migrations"
 	"github.com/Agamariel/go-metrics/pkg/retry"
+	"github.com/pressly/goose/v3"
 	"go.uber.org/zap"
 )
 
@@ -38,6 +40,29 @@ func NewPostgresStorage(db *sql.DB, log logger.Logger) *PostgresStorage {
 	s.retry.strategy = retry.Linear(1*time.Second, 3*time.Second, 5*time.Second)
 	s.retry.maxAttempts = defaultRetryAttempts
 	return s
+}
+
+// Migrate применяет миграции базы данных
+func Migrate(ctx context.Context, db *sql.DB, log logger.Logger) error {
+	if log == nil {
+		log = logger.Nop()
+	}
+
+	if err := goose.SetDialect("postgres"); err != nil {
+		return fmt.Errorf("ошибка установки диалекта: %w", err)
+	}
+
+	// Используем embed.FS для встраивания миграций в бинарник
+	goose.SetBaseFS(migrations.FS)
+
+	// Применяем миграции из встроенной файловой системы
+	// Файлы встраиваются в корень embed.FS, поэтому используем "."
+	if err := goose.UpContext(ctx, db, "."); err != nil {
+		return fmt.Errorf("ошибка применения миграций: %w", err)
+	}
+
+	log.Info("Миграции успешно применены")
+	return nil
 }
 
 // UpdateMetric реализует интерфейс Storage

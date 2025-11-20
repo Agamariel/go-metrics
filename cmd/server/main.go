@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 	"os"
@@ -41,17 +42,20 @@ func main() {
 
 	// Инициализируем хранилище
 	var storage repository.Storage
-	var database *db.DB
+	var database *sql.DB
 
 	// PostgreSQL -> File -> Memory
 	if cfg.DatabaseDSN != "" {
-		database, err = db.New(context.Background(), db.Config{
-			DSN: cfg.DatabaseDSN,
-		}, log)
+		database, err = db.New(context.Background(), db.NewPostgreSQL(cfg.DatabaseDSN), log)
 		if err != nil {
 			log.Fatal("Ошибка при подключении к базе данных", zap.Error(err))
 		}
-		storage = repository.NewPostgresStorage(database.DB, log)
+		// Применяем миграции
+		if err := repository.Migrate(context.Background(), database, log); err != nil {
+			database.Close()
+			log.Fatal("Ошибка при применении миграций", zap.Error(err))
+		}
+		storage = repository.NewPostgresStorage(database, log)
 		log.Info("Используется хранилище PostgreSQL")
 	} else if cfg.FileStoragePath != "" {
 		fileStorage, err := repository.NewFileStorage(repository.FileStorageConfig{
@@ -143,7 +147,7 @@ func main() {
 
 	// Закрываем подключение к базе данных
 	if database != nil {
-		if err := database.Close(log); err != nil {
+		if err := database.Close(); err != nil {
 			log.Error("Ошибка при закрытии подключения к БД", zap.Error(err))
 		}
 	}

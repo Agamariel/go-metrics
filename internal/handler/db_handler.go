@@ -2,25 +2,22 @@ package handler
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
 	"time"
 
 	"github.com/Agamariel/go-metrics/internal/logger"
+	"go.uber.org/zap"
 )
-
-// DB интерфейс для работы с базой данных
-type DB interface {
-	Ping(ctx context.Context, log logger.Logger) error
-}
 
 // DBHandler — HTTP-обработчик для проверки соединения с базой данных
 type DBHandler struct {
-	db     DB
+	db     *sql.DB
 	logger logger.Logger
 }
 
 // NewDBHandler создает новый хендлер для проверки БД
-func NewDBHandler(database DB, log logger.Logger) *DBHandler {
+func NewDBHandler(database *sql.DB, log logger.Logger) *DBHandler {
 	if log == nil {
 		log = logger.Nop()
 	}
@@ -43,8 +40,11 @@ func (h *DBHandler) PingDB(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	// Проверяем соединение с БД, передавая логгер явно
-	if err := h.db.Ping(ctx, h.logger); err != nil {
+	// Проверяем соединение с БД
+	if err := h.db.PingContext(ctx); err != nil {
+		if h.logger != nil {
+			h.logger.Error("Ошибка проверки соединения с БД", zap.Error(err))
+		}
 		http.Error(w, "Ошибка проверки соединения с БД", http.StatusInternalServerError)
 		return
 	}
