@@ -92,12 +92,23 @@ func (p *PostgresStorage) UpdateMetrics(ctx context.Context, metrics []models.Me
 	}
 
 	return retry.Do(ctx, p.retry.maxAttempts, p.retry.strategy, retry.IsPostgresRetriableError, func() error {
-		// Начинаем транзакцию
+		// Транзакция создается заново при каждой попытке retry.
+		// Это необходимо, так как откаченная транзакция не может быть использована повторно.
 		tx, err := p.db.BeginTx(ctx, nil)
 		if err != nil {
 			return fmt.Errorf("ошибка начала транзакции: %w", err)
 		}
-		defer tx.Rollback()
+
+		// Флаг для отслеживания успешного коммита транзакции.
+		committed := false
+		defer func() {
+			if !committed {
+				// Откатываем транзакцию только если она не была закоммичена.
+				if rollbackErr := tx.Rollback(); rollbackErr != nil {
+					p.logger.Error("Ошибка при откате транзакции", zap.Error(rollbackErr))
+				}
+			}
+		}()
 
 		// Подготавливаем запросы для каждого типа метрики
 		stmtGauge, err := tx.PrepareContext(ctx,
@@ -157,6 +168,8 @@ func (p *PostgresStorage) UpdateMetrics(ctx context.Context, metrics []models.Me
 			return fmt.Errorf("ошибка коммита транзакции: %w", err)
 		}
 
+		// Коммит прошел успешно, поднимаем флаг.
+		committed = true
 		return nil
 	})
 }
