@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Agamariel/go-metrics/internal/logger"
 	"go.uber.org/zap"
 )
 
@@ -27,8 +28,12 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
 	return size, err
 }
 
-// Logger создаёт middleware для логирования запросов с использованием zap
-func Logger(logger *zap.Logger) func(next http.Handler) http.Handler {
+// Logger создаёт middleware для логирования запросов
+func Logger(log logger.Logger) func(next http.Handler) http.Handler {
+	if log == nil {
+		log = logger.Nop()
+	}
+
 	return func(next http.Handler) http.Handler { // Возвращаем middleware функцию для обертки следующего обработчика
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { // возвращаем функционально расширенный хендлер
 			start := time.Now()
@@ -47,7 +52,7 @@ func Logger(logger *zap.Logger) func(next http.Handler) http.Handler {
 			duration := time.Since(start)
 
 			// Логируем информацию о запросе и ответе
-			logger.Info("HTTP request",
+			log.Info("HTTP request",
 				zap.String("method", r.Method),
 				zap.String("uri", r.RequestURI),
 				zap.Int("status", rw.status),

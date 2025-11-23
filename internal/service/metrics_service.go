@@ -2,6 +2,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"strconv"
 	"strings"
@@ -27,7 +28,7 @@ func NewMetricsService(storage repository.Storage) *MetricsService {
 }
 
 // UpdateMetricByPath — обновляет метрику по данным из URL.
-func (s *MetricsService) UpdateMetricByPath(path string) error {
+func (s *MetricsService) UpdateMetricByPath(ctx context.Context, path string) error {
 	parts := strings.Split(path, "/")
 
 	switch len(parts) {
@@ -55,7 +56,7 @@ func (s *MetricsService) UpdateMetricByPath(path string) error {
 			MType: models.Gauge,
 			Value: &val,
 		}
-		return s.storage.UpdateMetric(m)
+		return s.storage.UpdateMetric(ctx, m)
 
 	case models.Counter:
 		delta, err := strconv.ParseInt(valueStr, 10, 64)
@@ -67,7 +68,7 @@ func (s *MetricsService) UpdateMetricByPath(path string) error {
 			MType: models.Counter,
 			Delta: &delta,
 		}
-		return s.storage.UpdateMetric(m)
+		return s.storage.UpdateMetric(ctx, m)
 
 	default:
 		return ErrInvalidType
@@ -75,12 +76,20 @@ func (s *MetricsService) UpdateMetricByPath(path string) error {
 }
 
 // UpdateMetric — обновляет метрику
-func (s *MetricsService) UpdateMetric(metric models.Metrics) error {
-	return s.storage.UpdateMetric(metric)
+func (s *MetricsService) UpdateMetric(ctx context.Context, metric models.Metrics) error {
+	return s.storage.UpdateMetric(ctx, metric)
+}
+
+// UpdateMetrics — обновляет множество метрик
+func (s *MetricsService) UpdateMetrics(ctx context.Context, metrics []models.Metrics) error {
+	if len(metrics) == 0 {
+		return nil
+	}
+	return s.storage.UpdateMetrics(ctx, metrics)
 }
 
 // UpdateGauge — обновляет gauge метрику
-func (s *MetricsService) UpdateGauge(name string, value float64) error {
+func (s *MetricsService) UpdateGauge(ctx context.Context, name string, value float64) error {
 	if strings.TrimSpace(name) == "" {
 		return ErrInvalidName
 	}
@@ -90,11 +99,11 @@ func (s *MetricsService) UpdateGauge(name string, value float64) error {
 		MType: models.Gauge,
 		Value: &value,
 	}
-	return s.storage.UpdateMetric(m)
+	return s.storage.UpdateMetric(ctx, m)
 }
 
 // UpdateCounter — обновляет counter метрику
-func (s *MetricsService) UpdateCounter(name string, delta int64) error {
+func (s *MetricsService) UpdateCounter(ctx context.Context, name string, delta int64) error {
 	if strings.TrimSpace(name) == "" {
 		return ErrInvalidName
 	}
@@ -104,11 +113,11 @@ func (s *MetricsService) UpdateCounter(name string, delta int64) error {
 		MType: models.Counter,
 		Delta: &delta,
 	}
-	return s.storage.UpdateMetric(m)
+	return s.storage.UpdateMetric(ctx, m)
 }
 
 // GetMetric — получает метрику по имени и типу.
-func (s *MetricsService) GetMetric(name, mType string) (models.Metrics, error) {
+func (s *MetricsService) GetMetric(ctx context.Context, name, mType string) (models.Metrics, error) {
 	// Проверяем, что имя не пустое
 	if strings.TrimSpace(name) == "" {
 		return models.Metrics{}, ErrInvalidName
@@ -119,15 +128,18 @@ func (s *MetricsService) GetMetric(name, mType string) (models.Metrics, error) {
 		return models.Metrics{}, ErrInvalidType
 	}
 
-	metric, found := s.storage.GetMetric(name, mType)
-	if !found {
-		return models.Metrics{}, ErrInvalidName
+	metric, err := s.storage.GetMetric(ctx, name, mType)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return models.Metrics{}, ErrInvalidName
+		}
+		return models.Metrics{}, err
 	}
 
 	return metric, nil
 }
 
 // GetAllMetrics — получает все метрики.
-func (s *MetricsService) GetAllMetrics() []models.Metrics {
-	return s.storage.GetAllMetrics()
+func (s *MetricsService) GetAllMetrics(ctx context.Context) ([]models.Metrics, error) {
+	return s.storage.GetAllMetrics(ctx)
 }

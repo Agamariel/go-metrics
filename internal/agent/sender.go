@@ -3,12 +3,14 @@ package agent
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/Agamariel/go-metrics/internal/models"
+	"github.com/Agamariel/go-metrics/pkg/retry"
 	"github.com/go-resty/resty/v2"
 )
 
@@ -101,33 +103,76 @@ func (s *MetricsSender) SendMetricJSON(metric models.Metrics) error {
 	return nil
 }
 
-// SendAllMetrics отправляет все метрики на сервер используя JSON API
-func (s *MetricsSender) SendAllMetrics(gauges map[string]float64, counters map[string]int64) error {
-	// Отправляем gauge метрики
+// SendAllMetrics отправляет все метрики на сервер используя JSON API батчами
+func (s *MetricsSender) SendAllMetrics(ctx context.Context, gauges map[string]float64, counters map[string]int64) error {
+	// Формируем список всех метрик
+	var metrics []models.Metrics
+
+	// Добавляем gauge метрики
 	for name, value := range gauges {
 		v := value // копируем значение для создания указателя
-		metric := models.Metrics{
+		metrics = append(metrics, models.Metrics{
 			ID:    name,
 			MType: models.Gauge,
 			Value: &v,
-		}
-		if err := s.SendMetricJSON(metric); err != nil {
-			return fmt.Errorf("failed to send gauge metric %s: %w", name, err)
-		}
+		})
 	}
 
-	// Отправляем counter метрики
+	// Добавляем counter метрики
 	for name, value := range counters {
 		v := value // копируем значение для создания указателя
-		metric := models.Metrics{
+		metrics = append(metrics, models.Metrics{
 			ID:    name,
 			MType: models.Counter,
 			Delta: &v,
-		}
-		if err := s.SendMetricJSON(metric); err != nil {
-			return fmt.Errorf("failed to send counter metric %s: %w", name, err)
-		}
+		})
 	}
 
-	return nil
+	// Не отправляем пустые батчи
+	if len(metrics) == 0 {
+		return nil
+	}
+
+	// Отправляем все метрики одним батчем
+	return s.SendMetricsBatch(ctx, metrics)
+}
+
+// SendMetricsBatch отправляет батч метрик на сервер через /updates/
+func (s *MetricsSender) SendMetricsBatch(ctx context.Context, metrics []models.Metrics) error {
+	if len(metrics) == 0 {
+		return nil
+	}
+
+	compressed, err := compressJSON(metrics)
+	if err != nil {
+		return fmt.Errorf("compress: %w", err)
+	}
+
+	url := s.serverURL + "/updates/"
+	strategy := retry.Linear(1*time.Second, 3*time.Second, 5*time.Second)
+
+	// 1 начальная + 3 повтора
+	const maxAttempts = 4
+
+	return retry.Do(ctx, maxAttempts, strategy, retry.IsHTTPRetriable,
+		func() error {
+			resp, err := s.client.R().
+				SetContext(ctx).
+				SetHeader("Content-Type", "application/json").
+				SetHeader("Content-Encoding", "gzip").
+				SetBody(compressed).
+				Post(url)
+
+			if err != nil {
+				return fmt.Errorf("post: %w", err)
+			}
+			if sc := resp.StatusCode(); sc != http.StatusOK {
+				if sc >= 500 && sc < 600 {
+					return fmt.Errorf("%w: status %d body %s", retry.ErrRetriable, sc, resp.Body())
+				}
+				return fmt.Errorf("non-retriable status %d body %s", sc, resp.Body())
+			}
+			return nil
+		},
+	)
 }

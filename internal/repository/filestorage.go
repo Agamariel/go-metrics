@@ -1,12 +1,15 @@
 package repository
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/Agamariel/go-metrics/internal/logger"
 	"github.com/Agamariel/go-metrics/internal/models"
 	"go.uber.org/zap"
 )
@@ -32,7 +35,7 @@ type FileStorage struct {
 	filePath      string
 	storeInterval int  // в секундах, 0 = синхронное сохранение
 	syncWrite     bool // true если storeInterval == 0
-	logger        *zap.Logger
+	logger        logger.Logger
 	mu            sync.RWMutex
 	stopChan      chan struct{}
 	ticker        ticker
@@ -44,18 +47,23 @@ type FileStorageConfig struct {
 	FilePath      string
 	StoreInterval int
 	Restore       bool
-	Logger        *zap.Logger
+	Logger        logger.Logger
 	Ticker        ticker
 }
 
 // NewFileStorage создаёт новый FileStorage
 func NewFileStorage(config FileStorageConfig) (*FileStorage, error) {
+	log := config.Logger
+	if log == nil {
+		log = logger.Nop()
+	}
+
 	fs := &FileStorage{
 		mem:           NewMemStorage(),
 		filePath:      config.FilePath,
 		storeInterval: config.StoreInterval,
 		syncWrite:     config.StoreInterval == 0,
-		logger:        config.Logger,
+		logger:        log,
 		stopChan:      make(chan struct{}),
 		ticker:        config.Ticker, // если не передан (nil) - создадим в startPeriodicSave
 	}
@@ -80,9 +88,24 @@ func NewFileStorage(config FileStorageConfig) (*FileStorage, error) {
 }
 
 // UpdateMetric реализует интерфейс Storage
-func (fs *FileStorage) UpdateMetric(metric models.Metrics) error {
+func (fs *FileStorage) UpdateMetric(ctx context.Context, metric models.Metrics) error {
 	// Обновляем в памяти
-	if err := fs.mem.UpdateMetric(metric); err != nil {
+	if err := fs.mem.UpdateMetric(ctx, metric); err != nil {
+		return err
+	}
+
+	// Синхронно сохраняем в файл если нужно
+	if fs.syncWrite {
+		return fs.saveToFile()
+	}
+
+	return nil
+}
+
+// UpdateMetrics реализует интерфейс Storage для пакетного обновления
+func (fs *FileStorage) UpdateMetrics(ctx context.Context, metrics []models.Metrics) error {
+	// Обновляем в памяти
+	if err := fs.mem.UpdateMetrics(ctx, metrics); err != nil {
 		return err
 	}
 
@@ -95,13 +118,13 @@ func (fs *FileStorage) UpdateMetric(metric models.Metrics) error {
 }
 
 // GetMetric реализует интерфейс Storage
-func (fs *FileStorage) GetMetric(id string, mType string) (models.Metrics, bool) {
-	return fs.mem.GetMetric(id, mType)
+func (fs *FileStorage) GetMetric(ctx context.Context, id string, mType string) (models.Metrics, error) {
+	return fs.mem.GetMetric(ctx, id, mType)
 }
 
 // GetAllMetrics реализует интерфейс Storage
-func (fs *FileStorage) GetAllMetrics() []models.Metrics {
-	return fs.mem.GetAllMetrics()
+func (fs *FileStorage) GetAllMetrics(ctx context.Context) ([]models.Metrics, error) {
+	return fs.mem.GetAllMetrics(ctx)
 }
 
 // saveToFile сохраняет все метрики в JSON файл
@@ -110,7 +133,11 @@ func (fs *FileStorage) saveToFile() error {
 	defer fs.mu.Unlock()
 
 	// Получаем все метрики
-	metrics := fs.mem.GetAllMetrics()
+	ctx := context.Background()
+	metrics, err := fs.mem.GetAllMetrics(ctx)
+	if err != nil {
+		return fmt.Errorf("ошибка при получении всех метрик: %w", err)
+	}
 
 	// Открываем файл для записи (создаём, если не существует)
 	file, err := os.Create(fs.filePath)
@@ -152,8 +179,11 @@ func (fs *FileStorage) loadFromFile() error {
 	}
 
 	// Загружаем метрики
+	ctx := context.Background()
 	for _, metric := range metrics {
-		fs.mem.UpdateMetric(metric)
+		if err := fs.mem.UpdateMetric(ctx, metric); err != nil {
+			return err
+		}
 	}
 
 	return nil

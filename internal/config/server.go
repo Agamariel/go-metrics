@@ -14,6 +14,7 @@ type ServerConfig struct {
 	FileStoragePath string `env:"FILE_STORAGE_PATH"`
 	Restore         bool   `env:"RESTORE"`
 	ShutdownTimeout int    `env:"SHUTDOWN_TIMEOUT"`
+	DatabaseDSN     string `env:"DATABASE_DSN"`
 }
 
 // LoadServerConfig загружает конфигурацию сервера из флагов и переменных окружения
@@ -34,6 +35,7 @@ func LoadServerConfig() (ServerConfig, error) {
 	flag.StringVar(&cfg.FileStoragePath, "f", cfg.FileStoragePath, "путь к файлу для сохранения метрик")
 	flag.BoolVar(&cfg.Restore, "r", cfg.Restore, "загружать ли ранее сохранённые метрики при старте")
 	flag.IntVar(&cfg.ShutdownTimeout, "t", cfg.ShutdownTimeout, "таймаут graceful shutdown в секундах")
+	flag.StringVar(&cfg.DatabaseDSN, "d", cfg.DatabaseDSN, "строка подключения к базе данных")
 
 	flag.Parse()
 

@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"context"
+	"fmt"
 	"sync"
 
 	"github.com/Agamariel/go-metrics/internal/models"
@@ -22,7 +24,7 @@ func NewMemStorage() *MemStorage {
 }
 
 // UpdateMetric реализует интерфейс Storage.
-func (m *MemStorage) UpdateMetric(metric models.Metrics) error {
+func (m *MemStorage) UpdateMetric(ctx context.Context, metric models.Metrics) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -39,7 +41,27 @@ func (m *MemStorage) UpdateMetric(metric models.Metrics) error {
 	return nil
 }
 
-func (m *MemStorage) GetMetric(id string, mType string) (models.Metrics, bool) {
+// UpdateMetrics реализует интерфейс Storage для пакетного обновления.
+func (m *MemStorage) UpdateMetrics(ctx context.Context, metrics []models.Metrics) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, metric := range metrics {
+		switch metric.MType {
+		case models.Gauge:
+			if metric.Value != nil {
+				m.gauges[metric.ID] = *metric.Value
+			}
+		case models.Counter:
+			if metric.Delta != nil {
+				m.counters[metric.ID] += *metric.Delta
+			}
+		}
+	}
+	return nil
+}
+
+func (m *MemStorage) GetMetric(ctx context.Context, id string, mType string) (models.Metrics, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -51,23 +73,23 @@ func (m *MemStorage) GetMetric(id string, mType string) (models.Metrics, bool) {
 	case models.Gauge:
 		val, ok := m.gauges[id]
 		if !ok {
-			return models.Metrics{}, false
+			return models.Metrics{}, ErrNotFound
 		}
 		result.Value = &val
-		return result, true
+		return result, nil
 	case models.Counter:
 		val, ok := m.counters[id]
 		if !ok {
-			return models.Metrics{}, false
+			return models.Metrics{}, ErrNotFound
 		}
 		result.Delta = &val
-		return result, true
+		return result, nil
 	default:
-		return models.Metrics{}, false
+		return models.Metrics{}, fmt.Errorf("invalid metric type: %s", mType)
 	}
 }
 
-func (m *MemStorage) GetAllMetrics() []models.Metrics {
+func (m *MemStorage) GetAllMetrics(ctx context.Context) ([]models.Metrics, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -88,7 +110,12 @@ func (m *MemStorage) GetAllMetrics() []models.Metrics {
 			Delta: &v,
 		})
 	}
-	return all
+	return all, nil
+}
+
+// Close закрывает хранилище (для MemStorage ничего не делает)
+func (m *MemStorage) Close() error {
+	return nil
 }
 
 // Убедимся, что MemStorage удовлетворяет интерфейсу Storage
