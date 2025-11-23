@@ -9,7 +9,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/Agamariel/go-metrics/pkg/sha256Hash"
+	"github.com/Agamariel/go-metrics/pkg/sha256hash"
 )
 
 type hashWriter struct {
@@ -59,7 +59,7 @@ func verifyRequestHash(r *http.Request, key string) error {
 		return err
 	}
 	r.Body = io.NopCloser(bytes.NewReader(body))
-	if !sha256Hash.VerifySHA256(body, key, h) {
+	if !sha256hash.VerifySHA256(body, key, h) {
 		return http.ErrAbortHandler
 	}
 	return nil

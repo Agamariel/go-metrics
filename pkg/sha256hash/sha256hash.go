@@ -1,4 +1,4 @@
-package sha256Hash
+package sha256hash
 
 import (
 	"crypto/hmac"

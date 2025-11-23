@@ -11,7 +11,7 @@ import (
 
 	"github.com/Agamariel/go-metrics/internal/models"
 	"github.com/Agamariel/go-metrics/pkg/retry"
-	"github.com/Agamariel/go-metrics/pkg/sha256Hash"
+	"github.com/Agamariel/go-metrics/pkg/sha256hash"
 	"github.com/go-resty/resty/v2"
 )
 
@@ -92,7 +92,7 @@ func (s *MetricsSender) SendMetricJSON(metric models.Metrics) error {
 	// Вычисляем хеш если ключ задан
 	var request *resty.Request
 	if s.key != "" {
-		hashValue := sha256Hash.CalculateSHA256(jsonData, s.key)
+		hashValue := sha256hash.CalculateSHA256(jsonData, s.key)
 		request = s.client.R().
 			SetHeader("Content-Type", "application/json").
 			SetHeader("Content-Encoding", "gzip").
@@ -186,7 +186,7 @@ func (s *MetricsSender) SendMetricsBatch(ctx context.Context, metrics []models.M
 			// Создаем запрос с хешем если ключ задан
 			var request *resty.Request
 			if s.key != "" {
-				hashValue := sha256Hash.CalculateSHA256(jsonData, s.key)
+				hashValue := sha256hash.CalculateSHA256(jsonData, s.key)
 				request = s.client.R().
 					SetContext(ctx).
 					SetHeader("Content-Type", "application/json").
