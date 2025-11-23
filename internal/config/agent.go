@@ -12,6 +12,7 @@ type AgentConfig struct {
 	Address        string `env:"ADDRESS"`
 	ReportInterval int    `env:"REPORT_INTERVAL"`
 	PollInterval   int    `env:"POLL_INTERVAL"`
+	Key            string `env:"KEY"`
 }
 
 // LoadAgentConfig загружает конфигурацию агента из флагов и переменных окружения
@@ -28,6 +29,7 @@ func LoadAgentConfig() (AgentConfig, error) {
 	flag.StringVar(&cfg.Address, "a", cfg.Address, "адрес эндпоинта HTTP-сервера")
 	flag.IntVar(&cfg.ReportInterval, "r", cfg.ReportInterval, "частота отправки метрик на сервер (в секундах)")
 	flag.IntVar(&cfg.PollInterval, "p", cfg.PollInterval, "частота опроса метрик из пакета runtime (в секундах)")
+	flag.StringVar(&cfg.Key, "k", cfg.Key, "ключ для подписи данных")
 
 	flag.Parse()
 

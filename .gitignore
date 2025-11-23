@@ -24,5 +24,9 @@ bin/
 vendor/
 
 # IDEs directories
+!.github/
 .idea
 .vscode
+.*/
+
+ 

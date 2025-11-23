@@ -37,13 +37,14 @@ func main() {
 		zap.String("server_address", serverURL),
 		zap.Int("poll_interval_sec", cfg.PollInterval),
 		zap.Int("report_interval_sec", cfg.ReportInterval),
+		zap.Bool("hash_enabled", cfg.Key != ""),
 	)
 
 	// Создаем коллектор метрик
 	collector := agent.NewMetricsCollector()
 
 	// Создаем клиент для отправки метрик
-	sender := agent.NewMetricsSender(serverURL)
+	sender := agent.NewMetricsSender(serverURL, cfg.Key)
 
 	// Запускаем горутину для сбора метрик
 	go func() {

@@ -11,6 +11,7 @@ import (
 
 	"github.com/Agamariel/go-metrics/internal/models"
 	"github.com/Agamariel/go-metrics/pkg/retry"
+	"github.com/Agamariel/go-metrics/pkg/sha256Hash"
 	"github.com/go-resty/resty/v2"
 )
 
@@ -18,10 +19,11 @@ import (
 type MetricsSender struct {
 	serverURL string
 	client    *resty.Client
+	key       string
 }
 
 // NewMetricsSender создает новый клиент для отправки метрик
-func NewMetricsSender(serverURL string) *MetricsSender {
+func NewMetricsSender(serverURL string, key string) *MetricsSender {
 	client := resty.New()
 	client.SetTimeout(5 * time.Second)
 	client.SetHeader("Content-Type", "application/json")
@@ -30,6 +32,7 @@ func NewMetricsSender(serverURL string) *MetricsSender {
 	return &MetricsSender{
 		serverURL: serverURL,
 		client:    client,
+		key:       key,
 	}
 }
 
@@ -80,15 +83,33 @@ func (s *MetricsSender) SendMetric(metricType, metricName, value string) error {
 func (s *MetricsSender) SendMetricJSON(metric models.Metrics) error {
 	url := fmt.Sprintf("%s/update/", s.serverURL)
 
+	// Сериализуем метрику в JSON для вычисления хеша
+	jsonData, err := json.Marshal(metric)
+	if err != nil {
+		return fmt.Errorf("failed to marshal metric: %w", err)
+	}
+
+	// Вычисляем хеш если ключ задан
+	var request *resty.Request
+	if s.key != "" {
+		hashValue := sha256Hash.CalculateSHA256(jsonData, s.key)
+		request = s.client.R().
+			SetHeader("Content-Type", "application/json").
+			SetHeader("Content-Encoding", "gzip").
+			SetHeader("HashSHA256", hashValue)
+	} else {
+		request = s.client.R().
+			SetHeader("Content-Type", "application/json").
+			SetHeader("Content-Encoding", "gzip")
+	}
+
 	// Сжимаем данные
 	compressed, err := compressJSON(metric)
 	if err != nil {
 		return fmt.Errorf("failed to compress data: %w", err)
 	}
 
-	resp, err := s.client.R().
-		SetHeader("Content-Type", "application/json").
-		SetHeader("Content-Encoding", "gzip").
+	resp, err := request.
 		SetBody(compressed).
 		Post(url)
 
@@ -143,6 +164,12 @@ func (s *MetricsSender) SendMetricsBatch(ctx context.Context, metrics []models.M
 		return nil
 	}
 
+	// Сериализуем метрики в JSON для вычисления хеша
+	jsonData, err := json.Marshal(metrics)
+	if err != nil {
+		return fmt.Errorf("failed to marshal metrics: %w", err)
+	}
+
 	compressed, err := compressJSON(metrics)
 	if err != nil {
 		return fmt.Errorf("compress: %w", err)
@@ -156,10 +183,23 @@ func (s *MetricsSender) SendMetricsBatch(ctx context.Context, metrics []models.M
 
 	return retry.Do(ctx, maxAttempts, strategy, retry.IsHTTPRetriable,
 		func() error {
-			resp, err := s.client.R().
-				SetContext(ctx).
-				SetHeader("Content-Type", "application/json").
-				SetHeader("Content-Encoding", "gzip").
+			// Создаем запрос с хешем если ключ задан
+			var request *resty.Request
+			if s.key != "" {
+				hashValue := sha256Hash.CalculateSHA256(jsonData, s.key)
+				request = s.client.R().
+					SetContext(ctx).
+					SetHeader("Content-Type", "application/json").
+					SetHeader("Content-Encoding", "gzip").
+					SetHeader("HashSHA256", hashValue)
+			} else {
+				request = s.client.R().
+					SetContext(ctx).
+					SetHeader("Content-Type", "application/json").
+					SetHeader("Content-Encoding", "gzip")
+			}
+
+			resp, err := request.
 				SetBody(compressed).
 				Post(url)
 

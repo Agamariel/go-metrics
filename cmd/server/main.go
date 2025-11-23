@@ -88,10 +88,11 @@ func main() {
 	r.Use(custommiddleware.GzipMiddleware) // Сжатие gzip для всех эндпоинтов через нашу middleware
 	// У роутера есть встроенная middleware для сжатия ответов gzip
 	//r.Use(middleware.Compress(1)) // уровень сжатия 1, сжимаются типы из дефолтного списка
-	r.Use(custommiddleware.Logger(log)) // Кастомное логирование через интерфейс
-	r.Use(middleware.Recoverer)         // Восстановление после паники
-	r.Use(middleware.RequestID)         // Добавление request ID
-	r.Use(middleware.RealIP)            // Определение реального IP клиента
+	r.Use(custommiddleware.HashMiddleware(cfg.Key)) // Проверка и добавление хеша
+	r.Use(custommiddleware.Logger(log))             // Кастомное логирование через интерфейс
+	r.Use(middleware.Recoverer)                     // Восстановление после паники
+	r.Use(middleware.RequestID)                     // Добавление request ID
+	r.Use(middleware.RealIP)                        // Определение реального IP клиента
 
 	// Настраиваем маршруты с использованием chi
 	r.Post("/update/{type}/{name}/{value}", h.UpdateMetricHandler)
