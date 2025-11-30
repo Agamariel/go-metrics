@@ -1,9 +1,14 @@
 package agent
 
 import (
+	"fmt"
 	"math/rand"
 	"runtime"
 	"sync"
+	"time"
+
+	"github.com/shirou/gopsutil/v3/cpu"
+	"github.com/shirou/gopsutil/v3/mem"
 )
 
 // MetricsCollector собирает метрики из runtime
@@ -67,6 +72,39 @@ func (c *MetricsCollector) CollectMetrics() {
 	// Увеличиваем PollCount
 	c.pollCount++
 	c.counters["PollCount"] = c.pollCount
+}
+
+// CollectPSUtilMetrics собирает дополнительные метрики через gopsutil
+func (c *MetricsCollector) CollectPSUtilMetrics() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Получаем информацию о памяти
+	memInfo, err := mem.VirtualMemory()
+	if err != nil {
+		return err
+	}
+
+	// TotalMemory и FreeMemory
+	c.gauges["TotalMemory"] = float64(memInfo.Total)
+	c.gauges["FreeMemory"] = float64(memInfo.Free)
+
+	// Получаем количество CPU
+	numCPU := runtime.NumCPU()
+
+	// Получаем загрузку CPU для каждого ядра
+	cpuPercentages, err := cpu.Percent(time.Second, true)
+	if err != nil {
+		return err
+	}
+
+	// Сохраняем загрузку CPU для каждого ядра
+	// Если количество полученных значений меньше количества CPU, используем то что есть
+	for i := 0; i < numCPU && i < len(cpuPercentages); i++ {
+		c.gauges[fmt.Sprintf("CPUutilization%d", i+1)] = cpuPercentages[i]
+	}
+
+	return nil
 }
 
 // GetGauges возвращает копию gauge метрик
