@@ -14,11 +14,6 @@ import (
 	"go.uber.org/zap"
 )
 
-type metricsJob struct {
-	gauges   map[string]float64
-	counters map[string]int64
-}
-
 func main() {
 	// Инициализируем zap логгер
 	logger, err := zap.NewDevelopment()
@@ -79,7 +74,7 @@ func main() {
 	}()
 
 	// Создаем канал для задач отправки метрик (worker pool)
-	jobs := make(chan metricsJob, cfg.RateLimit)
+	jobs := make(chan agent.MetricsJob, cfg.RateLimit)
 
 	// WaitGroup для ожидания завершения воркеров
 	var wg sync.WaitGroup
@@ -92,7 +87,7 @@ func main() {
 			for job := range jobs {
 				// Создаем контекст с таймаутом для отправки метрик
 				sendCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-				err := sender.SendAllMetrics(sendCtx, job.gauges, job.counters)
+				err := sender.SendAllMetrics(sendCtx, job.Gauges, job.Counters)
 				cancel()
 
 				if err != nil {
@@ -122,7 +117,7 @@ func main() {
 
 				// Отправляем задачу в канал jobs
 				select {
-				case jobs <- metricsJob{gauges: gauges, counters: counters}:
+				case jobs <- agent.NewMetricsJob(gauges, counters):
 					logger.Info("Задача отправки метрик добавлена в очередь")
 				case <-ctx.Done():
 					return

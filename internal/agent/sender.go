@@ -36,28 +36,47 @@ func NewMetricsSender(serverURL string, key string) *MetricsSender {
 	}
 }
 
-// compressJSON сжимает данные в формате gzip
-func compressJSON(data interface{}) ([]byte, error) {
-	// Сериализуем в JSON
-	jsonData, err := json.Marshal(data)
-	if err != nil {
-		return nil, err
-	}
+// MetricsJob представляет пакет метрик для отправки в рамках одной задачи worker pool
+// Используется для передачи данных между горутиной-сборщиком и воркерами-отправителями
+type MetricsJob struct {
+	Gauges   map[string]float64
+	Counters map[string]int64
+}
 
-	// Сжимаем
+// NewMetricsJob создает новую задачу отправки метрик
+func NewMetricsJob(gauges map[string]float64, counters map[string]int64) MetricsJob {
+	return MetricsJob{
+		Gauges:   gauges,
+		Counters: counters,
+	}
+}
+
+// compressJSON сжимает данные в формате gzip
+func compressJSON(jsonData []byte) ([]byte, error) {
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
-
 	if _, err := gz.Write(jsonData); err != nil {
 		gz.Close()
 		return nil, err
 	}
-
 	if err := gz.Close(); err != nil {
 		return nil, err
 	}
-
 	return buf.Bytes(), nil
+}
+
+// createRequestWithHash создает resty.Request с хешем
+func (s *MetricsSender) createRequestWithHash(ctx context.Context, jsonData []byte) *resty.Request {
+	request := s.client.R().SetContext(ctx).
+		SetHeader("Content-Type", "application/json").
+		SetHeader("Content-Encoding", "gzip")
+
+	if s.key != "" {
+		hashValue := sha256hash.CalculateSHA256(jsonData, s.key)
+		request.SetHeader("HashSHA256", hashValue)
+	}
+
+	return request
 }
 
 // SendMetric отправляет одну метрику на сервер
@@ -80,7 +99,7 @@ func (s *MetricsSender) SendMetric(metricType, metricName, value string) error {
 }
 
 // SendMetricJSON отправляет одну метрику на сервер в формате JSON с gzip сжатием
-func (s *MetricsSender) SendMetricJSON(metric models.Metrics) error {
+func (s *MetricsSender) SendMetricJSON(ctx context.Context, metric models.Metrics) error {
 	url := fmt.Sprintf("%s/update/", s.serverURL)
 
 	// Сериализуем метрику в JSON для вычисления хеша
@@ -89,29 +108,16 @@ func (s *MetricsSender) SendMetricJSON(metric models.Metrics) error {
 		return fmt.Errorf("failed to marshal metric: %w", err)
 	}
 
-	// Вычисляем хеш если ключ задан
-	var request *resty.Request
-	if s.key != "" {
-		hashValue := sha256hash.CalculateSHA256(jsonData, s.key)
-		request = s.client.R().
-			SetHeader("Content-Type", "application/json").
-			SetHeader("Content-Encoding", "gzip").
-			SetHeader("HashSHA256", hashValue)
-	} else {
-		request = s.client.R().
-			SetHeader("Content-Type", "application/json").
-			SetHeader("Content-Encoding", "gzip")
-	}
-
-	// Сжимаем данные
-	compressed, err := compressJSON(metric)
+	// Сжимаем данные (передаем серриализованный jsonData)
+	compressed, err := compressJSON(jsonData)
 	if err != nil {
 		return fmt.Errorf("failed to compress data: %w", err)
 	}
 
-	resp, err := request.
-		SetBody(compressed).
-		Post(url)
+	// Создаем запрос с хешем
+	request := s.createRequestWithHash(ctx, jsonData)
+
+	resp, err := request.SetBody(compressed).Post(url)
 
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
@@ -170,7 +176,7 @@ func (s *MetricsSender) SendMetricsBatch(ctx context.Context, metrics []models.M
 		return fmt.Errorf("failed to marshal metrics: %w", err)
 	}
 
-	compressed, err := compressJSON(metrics)
+	compressed, err := compressJSON(jsonData)
 	if err != nil {
 		return fmt.Errorf("compress: %w", err)
 	}
@@ -183,21 +189,8 @@ func (s *MetricsSender) SendMetricsBatch(ctx context.Context, metrics []models.M
 
 	return retry.Do(ctx, maxAttempts, strategy, retry.IsHTTPRetriable,
 		func() error {
-			// Создаем запрос с хешем если ключ задан
-			var request *resty.Request
-			if s.key != "" {
-				hashValue := sha256hash.CalculateSHA256(jsonData, s.key)
-				request = s.client.R().
-					SetContext(ctx).
-					SetHeader("Content-Type", "application/json").
-					SetHeader("Content-Encoding", "gzip").
-					SetHeader("HashSHA256", hashValue)
-			} else {
-				request = s.client.R().
-					SetContext(ctx).
-					SetHeader("Content-Type", "application/json").
-					SetHeader("Content-Encoding", "gzip")
-			}
+			// Создаем запрос с хешем
+			request := s.createRequestWithHash(ctx, jsonData)
 
 			resp, err := request.
 				SetBody(compressed).

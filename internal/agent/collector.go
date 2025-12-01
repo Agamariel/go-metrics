@@ -76,18 +76,11 @@ func (c *MetricsCollector) CollectMetrics() {
 
 // CollectPSUtilMetrics собирает дополнительные метрики через gopsutil
 func (c *MetricsCollector) CollectPSUtilMetrics() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	// Получаем информацию о памяти
 	memInfo, err := mem.VirtualMemory()
 	if err != nil {
 		return err
 	}
-
-	// TotalMemory и FreeMemory
-	c.gauges["TotalMemory"] = float64(memInfo.Total)
-	c.gauges["FreeMemory"] = float64(memInfo.Free)
 
 	// Получаем количество CPU
 	numCPU := runtime.NumCPU()
@@ -97,6 +90,14 @@ func (c *MetricsCollector) CollectPSUtilMetrics() error {
 	if err != nil {
 		return err
 	}
+
+	// Блокируем доступ к gauges на время записи
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// TotalMemory и FreeMemory
+	c.gauges["TotalMemory"] = float64(memInfo.Total)
+	c.gauges["FreeMemory"] = float64(memInfo.Free)
 
 	// Сохраняем загрузку CPU для каждого ядра
 	// Если количество полученных значений меньше количества CPU, используем то что есть
