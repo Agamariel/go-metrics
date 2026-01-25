@@ -13,7 +13,7 @@ import (
 )
 
 func TestNewMetricsSender(t *testing.T) {
-	sender := NewMetricsSender("http://localhost:8080")
+	sender := NewMetricsSender("http://localhost:8080", "")
 
 	if sender == nil {
 		t.Fatal("NewMetricsSender returned nil")
@@ -52,7 +52,7 @@ func TestSendMetric(t *testing.T) {
 	}))
 	defer server.Close()
 
-	sender := NewMetricsSender(server.URL)
+	sender := NewMetricsSender(server.URL, "")
 
 	err := sender.SendMetric("gauge", "TestMetric", "123.456")
 	if err != nil {
@@ -67,7 +67,7 @@ func TestSendMetricServerError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	sender := NewMetricsSender(server.URL)
+	sender := NewMetricsSender(server.URL, "")
 
 	err := sender.SendMetric("gauge", "TestMetric", "123.456")
 	if err == nil {
@@ -115,7 +115,7 @@ func TestSendAllMetrics(t *testing.T) {
 	}))
 	defer server.Close()
 
-	sender := NewMetricsSender(server.URL)
+	sender := NewMetricsSender(server.URL, "")
 
 	gauges := map[string]float64{
 		"Metric1": 123.456,
@@ -164,7 +164,7 @@ func TestSendAllMetricsWithError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	sender := NewMetricsSender(server.URL)
+	sender := NewMetricsSender(server.URL, "")
 
 	gauges := map[string]float64{
 		"Metric1": 123.456,

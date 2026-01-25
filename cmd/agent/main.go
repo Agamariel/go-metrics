@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/Agamariel/go-metrics/internal/agent"
@@ -19,6 +22,10 @@ func main() {
 		os.Exit(1)
 	}
 	defer logger.Sync()
+
+	// Создаем контекст для graceful shutdown
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	// Загружаем конфигурацию
 	cfg, err := config.LoadAgentConfig()
@@ -37,43 +44,97 @@ func main() {
 		zap.String("server_address", serverURL),
 		zap.Int("poll_interval_sec", cfg.PollInterval),
 		zap.Int("report_interval_sec", cfg.ReportInterval),
+		zap.Int("rate_limit", cfg.RateLimit),
+		zap.Bool("hash_enabled", cfg.Key != ""),
 	)
 
 	// Создаем коллектор метрик
 	collector := agent.NewMetricsCollector()
 
 	// Создаем клиент для отправки метрик
-	sender := agent.NewMetricsSender(serverURL)
+	sender := agent.NewMetricsSender(serverURL, cfg.Key)
 
-	// Запускаем горутину для сбора метрик
+	// Объединяем сбор метрик в одну горутину
+	// будем использовать один тикер на оба сборщика
 	go func() {
 		ticker := time.NewTicker(pollDuration)
 		defer ticker.Stop()
 
-		for range ticker.C {
-			collector.CollectMetrics()
-			logger.Info("Метрики собраны")
-		}
-	}()
-
-	// Запускаем горутину для отправки метрик
-	go func() {
-		ticker := time.NewTicker(reportDuration)
-		defer ticker.Stop()
-
-		for range ticker.C {
-			gauges := collector.GetGauges()
-			counters := collector.GetCounters()
-
-			ctx := context.Background()
-			if err := sender.SendAllMetrics(ctx, gauges, counters); err != nil {
-				logger.Error("Ошибка при отправке метрик", zap.Error(err))
-			} else {
-				logger.Info("Метрики успешно отправлены")
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				collector.CollectMetrics()
+				if err := collector.CollectPSUtilMetrics(); err != nil {
+					logger.Error("Ошибка при сборе метрик через gopsutil", zap.Error(err))
+				}
 			}
 		}
 	}()
 
-	// Блокируем main
-	select {}
+	// Создаем канал для задач отправки метрик (worker pool)
+	jobs := make(chan agent.MetricsJob, cfg.RateLimit)
+
+	// WaitGroup для ожидания завершения воркеров
+	var wg sync.WaitGroup
+
+	// Создаем и запускаем воркеров для отправки метрик
+	for w := 1; w <= cfg.RateLimit; w++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+			for job := range jobs {
+				// Создаем контекст с таймаутом для отправки метрик
+				sendCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+				err := sender.SendAllMetrics(sendCtx, job.Gauges, job.Counters)
+				cancel()
+
+				if err != nil {
+					logger.Error("Ошибка при отправке метрик",
+						zap.Int("worker_id", workerID),
+						zap.Error(err))
+				} else {
+					logger.Info("Метрики успешно отправлены",
+						zap.Int("worker_id", workerID))
+				}
+			}
+		}(w)
+	}
+
+	// Запускаем горутину для добавления задач отправки в очередь
+	go func() {
+		ticker := time.NewTicker(reportDuration)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				gauges := collector.GetGauges()
+				counters := collector.GetCounters()
+
+				// Отправляем задачу в канал jobs
+				select {
+				case jobs <- agent.NewMetricsJob(gauges, counters):
+					logger.Info("Задача отправки метрик добавлена в очередь")
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
+	}()
+
+	// Ожидаем сигнала завершения
+	<-ctx.Done()
+	logger.Info("Получен сигнал завершения, начинаем graceful shutdown")
+
+	// Закрываем канал jobs, чтобы воркеры завершили работу
+	close(jobs)
+
+	// Ожидаем завершения всех воркеров
+	wg.Wait()
+
+	logger.Info("Агент успешно завершен")
 }

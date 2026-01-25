@@ -12,6 +12,8 @@ type AgentConfig struct {
 	Address        string `env:"ADDRESS"`
 	ReportInterval int    `env:"REPORT_INTERVAL"`
 	PollInterval   int    `env:"POLL_INTERVAL"`
+	Key            string `env:"KEY"`
+	RateLimit      int    `env:"RATE_LIMIT"`
 }
 
 // LoadAgentConfig загружает конфигурацию агента из флагов и переменных окружения
@@ -22,12 +24,15 @@ func LoadAgentConfig() (AgentConfig, error) {
 		Address:        "localhost:8080",
 		ReportInterval: 10,
 		PollInterval:   2,
+		RateLimit:      1,
 	}
 
 	// Определяем флаги командной строки
 	flag.StringVar(&cfg.Address, "a", cfg.Address, "адрес эндпоинта HTTP-сервера")
 	flag.IntVar(&cfg.ReportInterval, "r", cfg.ReportInterval, "частота отправки метрик на сервер (в секундах)")
 	flag.IntVar(&cfg.PollInterval, "p", cfg.PollInterval, "частота опроса метрик из пакета runtime (в секундах)")
+	flag.StringVar(&cfg.Key, "k", cfg.Key, "ключ для подписи данных")
+	flag.IntVar(&cfg.RateLimit, "l", cfg.RateLimit, "количество одновременно исходящих запросов на сервер")
 
 	flag.Parse()
 
@@ -42,12 +47,29 @@ func LoadAgentConfig() (AgentConfig, error) {
 	}
 
 	// Валидация
-	if cfg.ReportInterval <= 0 {
-		return cfg, fmt.Errorf("reportInterval должен быть положительным числом, получено: %d", cfg.ReportInterval)
-	}
-	if cfg.PollInterval <= 0 {
-		return cfg, fmt.Errorf("pollInterval должен быть положительным числом, получено: %d", cfg.PollInterval)
+	if err := validateAgentConfig(cfg); err != nil {
+		return cfg, err
 	}
 
 	return cfg, nil
+}
+
+// validateAgentConfig проверяет корректность конфигурации агента
+func validateAgentConfig(cfg AgentConfig) error {
+	validations := []struct {
+		value int
+		name  string
+	}{
+		{cfg.ReportInterval, "reportInterval"},
+		{cfg.PollInterval, "pollInterval"},
+		{cfg.RateLimit, "rateLimit"},
+	}
+
+	for _, v := range validations {
+		if v.value <= 0 {
+			return fmt.Errorf("%s должен быть положительным числом, получено: %d", v.name, v.value)
+		}
+	}
+
+	return nil
 }
