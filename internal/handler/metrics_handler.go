@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"path/filepath"
 	"runtime"
+	"time"
 
+	"github.com/Agamariel/go-metrics/internal/audit"
 	"github.com/Agamariel/go-metrics/internal/models"
 	"github.com/Agamariel/go-metrics/internal/service"
 	"github.com/go-chi/chi/v5"
@@ -26,14 +28,16 @@ type metricsService interface {
 
 // MetricsHandler — HTTP-обработчик метрик.
 type MetricsHandler struct {
-	service  metricsService
-	template *template.Template
+	service   metricsService
+	template  *template.Template
+	publisher *audit.Publisher
 }
 
 // NewMetricsHandler — конструктор.
 // Принимает любой тип, реализующий интерфейс metricsService.
 // service.MetricsService автоматически удовлетворяет этому интерфейсу.
-func NewMetricsHandler(s metricsService) *MetricsHandler {
+// publisher может быть nil, если аудит отключен.
+func NewMetricsHandler(s metricsService, publisher *audit.Publisher) *MetricsHandler {
 	// Загружаем шаблон один раз при создании хэндлера
 	_, filename, _, _ := runtime.Caller(0)
 	dir := filepath.Dir(filename)
@@ -46,8 +50,9 @@ func NewMetricsHandler(s metricsService) *MetricsHandler {
 	}
 
 	return &MetricsHandler{
-		service:  s,
-		template: tmpl,
+		service:   s,
+		template:  tmpl,
+		publisher: publisher,
 	}
 }
 
@@ -75,6 +80,16 @@ func (h *MetricsHandler) UpdateMetricHandler(w http.ResponseWriter, r *http.Requ
 			http.Error(w, "internal error", http.StatusInternalServerError)
 		}
 		return
+	}
+
+	// Отправляем событие аудита
+	if h.publisher != nil {
+		event := audit.Event{
+			Timestamp: time.Now().Unix(),
+			Metrics:   []string{metricName},
+			IPAddress: r.RemoteAddr,
+		}
+		h.publisher.NotifyAll(r.Context(), event)
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -218,6 +233,16 @@ func (h *MetricsHandler) UpdateMetricJSONHandler(w http.ResponseWriter, r *http.
 		return
 	}
 
+	// Отправляем событие аудита
+	if h.publisher != nil {
+		event := audit.Event{
+			Timestamp: time.Now().Unix(),
+			Metrics:   []string{metric.ID},
+			IPAddress: r.RemoteAddr,
+		}
+		h.publisher.NotifyAll(r.Context(), event)
+	}
+
 	// Возвращаем обновлённую метрику
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -309,6 +334,22 @@ func (h *MetricsHandler) UpdateMetricsBatchHandler(w http.ResponseWriter, r *htt
 	if err := h.service.UpdateMetrics(r.Context(), metrics); err != nil {
 		http.Error(w, fmt.Sprintf("Ошибка при обновлении метрик: %v", err), http.StatusInternalServerError)
 		return
+	}
+
+	// Отправляем событие аудита
+	if h.publisher != nil {
+		// Собираем имена всех метрик
+		metricNames := make([]string, len(metrics))
+		for i, m := range metrics {
+			metricNames[i] = m.ID
+		}
+
+		event := audit.Event{
+			Timestamp: time.Now().Unix(),
+			Metrics:   metricNames,
+			IPAddress: r.RemoteAddr,
+		}
+		h.publisher.NotifyAll(r.Context(), event)
 	}
 
 	w.Header().Set("Content-Type", "application/json")

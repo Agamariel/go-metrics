@@ -110,7 +110,7 @@ func createRequestWithParams(method, path string, params map[string]string) *htt
 func TestUpdateMetricHandlerGauge(t *testing.T) {
 	storage := NewMockStorage()
 	svc := service.NewMetricsService(storage)
-	handler := NewMetricsHandler(svc)
+	handler := NewMetricsHandler(svc, nil)
 
 	req := createRequestWithParams(http.MethodPost, "/update/gauge/TestGauge/123.456", map[string]string{
 		"type":  "gauge",
@@ -136,7 +136,7 @@ func TestUpdateMetricHandlerGauge(t *testing.T) {
 func TestUpdateMetricHandlerCounter(t *testing.T) {
 	storage := NewMockStorage()
 	svc := service.NewMetricsService(storage)
-	handler := NewMetricsHandler(svc)
+	handler := NewMetricsHandler(svc, nil)
 
 	req := createRequestWithParams(http.MethodPost, "/update/counter/TestCounter/42", map[string]string{
 		"type":  "counter",
@@ -162,7 +162,7 @@ func TestUpdateMetricHandlerCounter(t *testing.T) {
 func TestUpdateMetricHandlerInvalidPath(t *testing.T) {
 	storage := NewMockStorage()
 	svc := service.NewMetricsService(storage)
-	handler := NewMetricsHandler(svc)
+	handler := NewMetricsHandler(svc, nil)
 
 	tests := []struct {
 		name   string
@@ -190,7 +190,7 @@ func TestUpdateMetricHandlerInvalidPath(t *testing.T) {
 func TestUpdateMetricHandlerInvalidType(t *testing.T) {
 	storage := NewMockStorage()
 	svc := service.NewMetricsService(storage)
-	handler := NewMetricsHandler(svc)
+	handler := NewMetricsHandler(svc, nil)
 
 	req := createRequestWithParams(http.MethodPost, "/update/invalid/TestMetric/123", map[string]string{
 		"type":  "invalid",
@@ -209,7 +209,7 @@ func TestUpdateMetricHandlerInvalidType(t *testing.T) {
 func TestUpdateMetricHandlerInvalidValue(t *testing.T) {
 	storage := NewMockStorage()
 	svc := service.NewMetricsService(storage)
-	handler := NewMetricsHandler(svc)
+	handler := NewMetricsHandler(svc, nil)
 
 	tests := []struct {
 		name  string
@@ -243,7 +243,7 @@ func TestUpdateMetricHandlerInvalidValue(t *testing.T) {
 func TestUpdateMetricHandlerCounterAccumulation(t *testing.T) {
 	storage := NewMockStorage()
 	svc := service.NewMetricsService(storage)
-	handler := NewMetricsHandler(svc)
+	handler := NewMetricsHandler(svc, nil)
 
 	// Первый запрос
 	req1 := createRequestWithParams(http.MethodPost, "/update/counter/TestCounter/10", map[string]string{
@@ -282,7 +282,7 @@ func TestUpdateMetricHandlerCounterAccumulation(t *testing.T) {
 func TestGetMetricHandlerGauge(t *testing.T) {
 	storage := NewMockStorage()
 	svc := service.NewMetricsService(storage)
-	handler := NewMetricsHandler(svc)
+	handler := NewMetricsHandler(svc, nil)
 
 	// Сначала сохраняем метрику
 	val := 123.456
@@ -313,7 +313,7 @@ func TestGetMetricHandlerGauge(t *testing.T) {
 func TestGetMetricHandlerCounter(t *testing.T) {
 	storage := NewMockStorage()
 	svc := service.NewMetricsService(storage)
-	handler := NewMetricsHandler(svc)
+	handler := NewMetricsHandler(svc, nil)
 
 	// Сначала сохраняем метрику
 	storage.counters["TestCounter"] = 42
@@ -339,7 +339,7 @@ func TestGetMetricHandlerCounter(t *testing.T) {
 func TestGetMetricHandlerNotFound(t *testing.T) {
 	storage := NewMockStorage()
 	svc := service.NewMetricsService(storage)
-	handler := NewMetricsHandler(svc)
+	handler := NewMetricsHandler(svc, nil)
 
 	req := createRequestWithParams(http.MethodGet, "/value/gauge/NonExistent", map[string]string{
 		"type": "gauge",
@@ -357,7 +357,7 @@ func TestGetMetricHandlerNotFound(t *testing.T) {
 func TestGetMetricHandlerInvalidType(t *testing.T) {
 	storage := NewMockStorage()
 	svc := service.NewMetricsService(storage)
-	handler := NewMetricsHandler(svc)
+	handler := NewMetricsHandler(svc, nil)
 
 	req := createRequestWithParams(http.MethodGet, "/value/invalid/TestMetric", map[string]string{
 		"type": "invalid",
@@ -375,7 +375,7 @@ func TestGetMetricHandlerInvalidType(t *testing.T) {
 func TestListMetricsHandler(t *testing.T) {
 	storage := NewMockStorage()
 	svc := service.NewMetricsService(storage)
-	handler := NewMetricsHandler(svc)
+	handler := NewMetricsHandler(svc, nil)
 
 	// Добавляем несколько метрик
 	storage.gauges["Gauge1"] = 123.456
@@ -417,7 +417,7 @@ func TestListMetricsHandler(t *testing.T) {
 func TestListMetricsHandlerEmpty(t *testing.T) {
 	storage := NewMockStorage()
 	svc := service.NewMetricsService(storage)
-	handler := NewMetricsHandler(svc)
+	handler := NewMetricsHandler(svc, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()

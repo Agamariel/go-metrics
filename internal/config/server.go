@@ -16,6 +16,8 @@ type ServerConfig struct {
 	ShutdownTimeout int    `env:"SHUTDOWN_TIMEOUT"`
 	DatabaseDSN     string `env:"DATABASE_DSN"`
 	Key             string `env:"KEY"`
+	AuditFile       string `env:"AUDIT_FILE"`
+	AuditURL        string `env:"AUDIT_URL"`
 }
 
 // LoadServerConfig загружает конфигурацию сервера из флагов и переменных окружения
@@ -38,6 +40,8 @@ func LoadServerConfig() (ServerConfig, error) {
 	flag.IntVar(&cfg.ShutdownTimeout, "t", cfg.ShutdownTimeout, "таймаут graceful shutdown в секундах")
 	flag.StringVar(&cfg.DatabaseDSN, "d", cfg.DatabaseDSN, "строка подключения к базе данных")
 	flag.StringVar(&cfg.Key, "k", cfg.Key, "ключ для подписи данных")
+	flag.StringVar(&cfg.AuditFile, "audit-file", cfg.AuditFile, "путь к файлу для сохранения логов аудита")
+	flag.StringVar(&cfg.AuditURL, "audit-url", cfg.AuditURL, "URL для отправки логов аудита")
 
 	flag.Parse()
 
