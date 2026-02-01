@@ -151,7 +151,8 @@ func (h *MetricsHandler) ListMetricsHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Преобразуем метрики в структуры для отображения
-	var views []MetricView
+	// Предварительно выделяем память для среза
+	views := make([]MetricView, 0, len(metrics))
 	for _, m := range metrics {
 		view := MetricView{
 			Type: m.MType,

@@ -93,7 +93,10 @@ func (m *MemStorage) GetAllMetrics(ctx context.Context) ([]models.Metrics, error
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	var all []models.Metrics
+	// Предварительно выделяем память для среза, чтобы избежать реаллокаций
+	totalLen := len(m.gauges) + len(m.counters)
+	all := make([]models.Metrics, 0, totalLen)
+	
 	for id, val := range m.gauges {
 		v := val
 		all = append(all, models.Metrics{
