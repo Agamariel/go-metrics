@@ -1,3 +1,23 @@
+// Package handler предоставляет HTTP-обработчики для сервера метрик.
+//
+// Пакет содержит обработчики для следующих эндпоинтов:
+//   - POST /update/{type}/{name}/{value} — обновление метрики через URL-параметры
+//   - POST /update — обновление метрики через JSON
+//   - POST /updates/ — пакетное обновление метрик
+//   - GET /value/{type}/{name} — получение значения метрики в текстовом виде
+//   - POST /value — получение значения метрики в формате JSON
+//   - GET / — HTML-страница со списком всех метрик
+//   - GET /ping — проверка соединения с базой данных
+//
+// # Пример использования
+//
+//	storage := repository.NewMemStorage()
+//	svc := service.NewMetricsService(storage)
+//	handler := handler.NewMetricsHandler(svc, nil)
+//
+//	r := chi.NewRouter()
+//	r.Post("/update/{type}/{name}/{value}", handler.UpdateMetricHandler)
+//	r.Get("/value/{type}/{name}", handler.GetMetricHandler)
 package handler
 
 import (
@@ -17,26 +37,43 @@ import (
 )
 
 // metricsService определяет интерфейс для работы с метриками.
+// Позволяет использовать любую реализацию сервиса метрик для тестирования.
 type metricsService interface {
+	// UpdateMetricByPath обновляет метрику по данным из URL-пути.
 	UpdateMetricByPath(ctx context.Context, path string) error
+	// UpdateGauge обновляет gauge-метрику.
 	UpdateGauge(ctx context.Context, name string, value float64) error
+	// UpdateCounter обновляет counter-метрику.
 	UpdateCounter(ctx context.Context, name string, delta int64) error
+	// UpdateMetrics пакетно обновляет несколько метрик.
 	UpdateMetrics(ctx context.Context, metrics []models.Metrics) error
+	// GetMetric возвращает метрику по имени и типу.
 	GetMetric(ctx context.Context, name, mType string) (models.Metrics, error)
+	// GetAllMetrics возвращает все сохранённые метрики.
 	GetAllMetrics(ctx context.Context) ([]models.Metrics, error)
 }
 
-// MetricsHandler — HTTP-обработчик метрик.
+// MetricsHandler предоставляет HTTP-обработчики для работы с метриками.
+//
+// Обработчик использует chi-роутер для извлечения URL-параметров
+// и поддерживает как текстовый, так и JSON-формат обмена данными.
+//
+// При создании загружает HTML-шаблон для отображения списка метрик.
+// Опционально поддерживает отправку событий аудита через Publisher.
 type MetricsHandler struct {
 	service   metricsService
 	template  *template.Template
 	publisher *audit.Publisher
 }
 
-// NewMetricsHandler — конструктор.
-// Принимает любой тип, реализующий интерфейс metricsService.
-// service.MetricsService автоматически удовлетворяет этому интерфейсу.
-// publisher может быть nil, если аудит отключен.
+// NewMetricsHandler создаёт новый обработчик метрик.
+//
+// Параметры:
+//   - s: сервис метрик, реализующий интерфейс metricsService
+//   - publisher: издатель событий аудита (может быть nil, если аудит отключен)
+//
+// Функция загружает HTML-шаблон metrics.gohtml из директории пакета.
+// При ошибке загрузки шаблона вызывает panic.
 func NewMetricsHandler(s metricsService, publisher *audit.Publisher) *MetricsHandler {
 	// Загружаем шаблон один раз при создании хэндлера
 	_, filename, _, _ := runtime.Caller(0)
@@ -56,8 +93,18 @@ func NewMetricsHandler(s metricsService, publisher *audit.Publisher) *MetricsHan
 	}
 }
 
-// UpdateMetricHandler обрабатывает POST /update/{type}/{name}/{value}
-// Теперь использует chi роутер для извлечения параметров из URL
+// UpdateMetricHandler обрабатывает POST /update/{type}/{name}/{value}.
+//
+// Эндпоинт принимает параметры метрики через URL:
+//   - type: тип метрики ("gauge" или "counter")
+//   - name: имя метрики
+//   - value: значение (float64 для gauge, int64 для counter)
+//
+// Коды ответа:
+//   - 200 OK: метрика успешно обновлена
+//   - 400 Bad Request: неверный тип или значение метрики
+//   - 404 Not Found: пустое имя метрики
+//   - 500 Internal Server Error: внутренняя ошибка сервера
 func (h *MetricsHandler) UpdateMetricHandler(w http.ResponseWriter, r *http.Request) {
 	// Извлекаем параметры через chi.URLParam
 	metricType := chi.URLParam(r, "type")
@@ -95,8 +142,18 @@ func (h *MetricsHandler) UpdateMetricHandler(w http.ResponseWriter, r *http.Requ
 	w.WriteHeader(http.StatusOK)
 }
 
-// GetMetricHandler обрабатывает GET /value/{type}/{name}
-// Возвращает значение метрики в текстовом виде
+// GetMetricHandler обрабатывает GET /value/{type}/{name}.
+//
+// Возвращает значение метрики в текстовом виде (Content-Type: text/plain).
+// Формат вывода:
+//   - gauge: число с плавающей точкой (например, "123.456")
+//   - counter: целое число (например, "42")
+//
+// Коды ответа:
+//   - 200 OK: метрика найдена, значение в теле ответа
+//   - 400 Bad Request: неверный тип метрики
+//   - 404 Not Found: метрика не найдена
+//   - 500 Internal Server Error: внутренняя ошибка сервера
 func (h *MetricsHandler) GetMetricHandler(w http.ResponseWriter, r *http.Request) {
 	metricType := chi.URLParam(r, "type")
 	metricName := chi.URLParam(r, "name")
@@ -134,15 +191,26 @@ func (h *MetricsHandler) GetMetricHandler(w http.ResponseWriter, r *http.Request
 	w.Write([]byte(value))
 }
 
-// MetricView - структура для отображения метрики в шаблоне
+// MetricView представляет метрику для отображения в HTML-шаблоне.
+//
+// Используется в ListMetricsHandler для рендеринга списка метрик.
 type MetricView struct {
-	Type  string
-	Name  string
+	// Type — тип метрики ("gauge" или "counter").
+	Type string
+	// Name — имя метрики.
+	Name string
+	// Value — строковое представление значения метрики.
 	Value string
 }
 
-// ListMetricsHandler обрабатывает GET /
-// Возвращает HTML-страницу со списком всех метрик
+// ListMetricsHandler обрабатывает GET /.
+//
+// Возвращает HTML-страницу со списком всех сохранённых метрик
+// (Content-Type: text/html; charset=utf-8).
+//
+// Коды ответа:
+//   - 200 OK: страница успешно сформирована
+//   - 500 Internal Server Error: ошибка получения метрик или рендеринга шаблона
 func (h *MetricsHandler) ListMetricsHandler(w http.ResponseWriter, r *http.Request) {
 	metrics, err := h.service.GetAllMetrics(r.Context())
 	if err != nil {
@@ -182,8 +250,23 @@ func (h *MetricsHandler) ListMetricsHandler(w http.ResponseWriter, r *http.Reque
 	}
 }
 
-// UpdateMetricJSONHandler обрабатывает POST /update
-// Принимает метрику в формате JSON и сохраняет её
+// UpdateMetricJSONHandler обрабатывает POST /update.
+//
+// Принимает метрику в формате JSON и сохраняет её.
+// Требует заголовок Content-Type: application/json.
+//
+// Формат запроса:
+//
+//	{
+//	    "id": "metric_name",
+//	    "type": "gauge" | "counter",
+//	    "value": 123.45,  // для gauge
+//	    "delta": 10       // для counter
+//	}
+//
+// Коды ответа:
+//   - 200 OK: метрика обновлена, обновлённая метрика в теле ответа
+//   - 400 Bad Request: неверный JSON, Content-Type или отсутствуют обязательные поля
 func (h *MetricsHandler) UpdateMetricJSONHandler(w http.ResponseWriter, r *http.Request) {
 	// Проверяем Content-Type
 	if r.Header.Get("Content-Type") != "application/json" {
@@ -250,8 +333,31 @@ func (h *MetricsHandler) UpdateMetricJSONHandler(w http.ResponseWriter, r *http.
 	json.NewEncoder(w).Encode(metric)
 }
 
-// GetMetricJSONHandler обрабатывает POST /value
-// Возвращает значение метрики в формате JSON
+// GetMetricJSONHandler обрабатывает POST /value.
+//
+// Принимает запрос с идентификатором метрики в формате JSON
+// и возвращает полную информацию о метрике.
+// Требует заголовок Content-Type: application/json.
+//
+// Формат запроса:
+//
+//	{
+//	    "id": "metric_name",
+//	    "type": "gauge" | "counter"
+//	}
+//
+// Формат ответа:
+//
+//	{
+//	    "id": "metric_name",
+//	    "type": "gauge",
+//	    "value": 123.45
+//	}
+//
+// Коды ответа:
+//   - 200 OK: метрика найдена
+//   - 400 Bad Request: неверный JSON или Content-Type
+//   - 404 Not Found: метрика не найдена
 func (h *MetricsHandler) GetMetricJSONHandler(w http.ResponseWriter, r *http.Request) {
 	// Проверяем Content-Type
 	if r.Header.Get("Content-Type") != "application/json" {
@@ -286,8 +392,23 @@ func (h *MetricsHandler) GetMetricJSONHandler(w http.ResponseWriter, r *http.Req
 	json.NewEncoder(w).Encode(metric)
 }
 
-// UpdateMetricsBatchHandler обрабатывает POST /updates/
-// Принимает множество метрик в формате JSON ([]Metrics) и сохраняет их
+// UpdateMetricsBatchHandler обрабатывает POST /updates/.
+//
+// Принимает массив метрик в формате JSON и сохраняет их атомарно.
+// Это наиболее эффективный способ отправки нескольких метрик одновременно.
+// Требует заголовок Content-Type: application/json.
+//
+// Формат запроса:
+//
+//	[
+//	    {"id": "metric1", "type": "gauge", "value": 123.45},
+//	    {"id": "metric2", "type": "counter", "delta": 10}
+//	]
+//
+// Коды ответа:
+//   - 200 OK: все метрики успешно обновлены
+//   - 400 Bad Request: неверный JSON, пустой массив или ошибки валидации
+//   - 500 Internal Server Error: ошибка при сохранении метрик
 func (h *MetricsHandler) UpdateMetricsBatchHandler(w http.ResponseWriter, r *http.Request) {
 	// Проверяем Content-Type
 	if r.Header.Get("Content-Type") != "application/json" {

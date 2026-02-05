@@ -8,14 +8,31 @@ import (
 	"github.com/Agamariel/go-metrics/internal/models"
 )
 
-// MemStorage — реализация интерфейса Storage в памяти.
+// MemStorage реализует интерфейс Storage с хранением данных в памяти.
+//
+// Особенности:
+//   - Потокобезопасен (использует sync.RWMutex)
+//   - Данные теряются при перезапуске приложения
+//   - Подходит для разработки, тестирования и сценариев без персистентности
+//
+// Для сохранения данных между перезапусками используйте FileStorage
+// или PostgresStorage.
 type MemStorage struct {
 	mu       sync.RWMutex
 	gauges   map[string]float64
 	counters map[string]int64
 }
 
-// NewMemStorage — конструктор.
+// NewMemStorage создаёт новое хранилище метрик в памяти.
+//
+// Пример использования:
+//
+//	storage := repository.NewMemStorage()
+//	defer storage.Close()
+//
+//	value := 42.5
+//	metric := models.Metrics{ID: "cpu", MType: models.Gauge, Value: &value}
+//	storage.UpdateMetric(ctx, metric)
 func NewMemStorage() *MemStorage {
 	return &MemStorage{
 		gauges:   make(map[string]float64),
@@ -23,7 +40,10 @@ func NewMemStorage() *MemStorage {
 	}
 }
 
-// UpdateMetric реализует интерфейс Storage.
+// UpdateMetric сохраняет или обновляет метрику в памяти.
+//
+// Для gauge-метрик значение замещается.
+// Для counter-метрик значение delta прибавляется к текущему.
 func (m *MemStorage) UpdateMetric(ctx context.Context, metric models.Metrics) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -41,7 +61,10 @@ func (m *MemStorage) UpdateMetric(ctx context.Context, metric models.Metrics) er
 	return nil
 }
 
-// UpdateMetrics реализует интерфейс Storage для пакетного обновления.
+// UpdateMetrics пакетно обновляет несколько метрик за одну операцию.
+//
+// Все обновления выполняются атомарно под одной блокировкой,
+// что эффективнее множественных вызовов UpdateMetric.
 func (m *MemStorage) UpdateMetrics(ctx context.Context, metrics []models.Metrics) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -61,6 +84,9 @@ func (m *MemStorage) UpdateMetrics(ctx context.Context, metrics []models.Metrics
 	return nil
 }
 
+// GetMetric возвращает метрику по идентификатору и типу.
+//
+// Возвращает ErrNotFound, если метрика с указанным id и типом не существует.
 func (m *MemStorage) GetMetric(ctx context.Context, id string, mType string) (models.Metrics, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -89,6 +115,10 @@ func (m *MemStorage) GetMetric(ctx context.Context, id string, mType string) (mo
 	}
 }
 
+// GetAllMetrics возвращает все сохранённые метрики (gauge и counter).
+//
+// Возвращает пустой слайс, если метрики отсутствуют.
+// Порядок метрик не гарантирован.
 func (m *MemStorage) GetAllMetrics(ctx context.Context) ([]models.Metrics, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -116,10 +146,13 @@ func (m *MemStorage) GetAllMetrics(ctx context.Context) ([]models.Metrics, error
 	return all, nil
 }
 
-// Close закрывает хранилище (для MemStorage ничего не делает)
+// Close освобождает ресурсы хранилища.
+//
+// Для MemStorage метод ничего не делает, так как нет внешних ресурсов.
+// Предоставлен для совместимости с интерфейсом Storage.
 func (m *MemStorage) Close() error {
 	return nil
 }
 
-// Убедимся, что MemStorage удовлетворяет интерфейсу Storage
+// Проверка времени компиляции: MemStorage реализует интерфейс Storage.
 var _ Storage = (*MemStorage)(nil)
