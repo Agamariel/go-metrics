@@ -1,3 +1,5 @@
+// Package pool предоставляет типобезопасную обёртку над sync.Pool
+// для объектов, реализующих интерфейс Resetter.
 package pool
 
 import "sync"
