@@ -12,7 +12,14 @@ import (
 
 	"github.com/Agamariel/go-metrics/internal/agent"
 	"github.com/Agamariel/go-metrics/internal/config"
+	"github.com/Agamariel/go-metrics/pkg/buildinfo"
 	"go.uber.org/zap"
+)
+
+var (
+	buildVersion string
+	buildDate    string
+	buildCommit  string
 )
 
 func main() {
@@ -23,6 +30,8 @@ func main() {
 
 // run содержит основную логику агента и возвращает ошибку вместо вызова os.Exit
 func run() error {
+	buildinfo.Print(buildVersion, buildDate, buildCommit)
+
 	// Инициализируем zap логгер
 	logger, err := zap.NewDevelopment()
 	if err != nil {

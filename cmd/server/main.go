@@ -10,6 +10,13 @@ import (
 	"time"
 
 	"github.com/Agamariel/go-metrics/internal/app"
+	"github.com/Agamariel/go-metrics/pkg/buildinfo"
+)
+
+var (
+	buildVersion string
+	buildDate    string
+	buildCommit  string
 )
 
 func main() {
@@ -20,6 +27,8 @@ func main() {
 
 // run содержит основную логику приложения и возвращает ошибку вместо вызова os.Exit
 func run() error {
+	buildinfo.Print(buildVersion, buildDate, buildCommit)
+
 	// Создаем и инициализируем приложение
 	application, err := app.NewApplication()
 	if err != nil {
