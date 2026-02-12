@@ -133,7 +133,9 @@ func (s *MetricsSender) SendMetricJSON(ctx context.Context, metric models.Metric
 // SendAllMetrics отправляет все метрики на сервер используя JSON API батчами
 func (s *MetricsSender) SendAllMetrics(ctx context.Context, gauges map[string]float64, counters map[string]int64) error {
 	// Формируем список всех метрик
-	var metrics []models.Metrics
+	// Предварительно выделяем память для среза
+	totalLen := len(gauges) + len(counters)
+	metrics := make([]models.Metrics, 0, totalLen)
 
 	// Добавляем gauge метрики
 	for name, value := range gauges {

@@ -10,13 +10,26 @@ import (
 	"go.uber.org/zap"
 )
 
-// DBHandler — HTTP-обработчик для проверки соединения с базой данных
+// DBHandler предоставляет HTTP-обработчик для проверки соединения с базой данных.
+//
+// Используется для health check эндпоинта, позволяющего
+// проверить доступность базы данных.
 type DBHandler struct {
 	db     *sql.DB
 	logger logger.Logger
 }
 
-// NewDBHandler создает новый хендлер для проверки БД
+// NewDBHandler создаёт новый обработчик для проверки базы данных.
+//
+// Параметры:
+//   - database: соединение с базой данных (может быть nil)
+//   - log: логгер для записи ошибок (если nil, используется Nop-логгер)
+//
+// Пример использования:
+//
+//	db, _ := sql.Open("postgres", dsn)
+//	handler := NewDBHandler(db, logger)
+//	r.Get("/ping", handler.PingDB)
 func NewDBHandler(database *sql.DB, log logger.Logger) *DBHandler {
 	if log == nil {
 		log = logger.Nop()
@@ -27,8 +40,14 @@ func NewDBHandler(database *sql.DB, log logger.Logger) *DBHandler {
 	}
 }
 
-// PingDB обрабатывает GET /ping
-// Возвращает 200 OK при успехе, 500 Internal Server Error при ошибке
+// PingDB обрабатывает GET /ping.
+//
+// Проверяет соединение с базой данных с таймаутом 3 секунды.
+// Используется для health check и мониторинга доступности БД.
+//
+// Коды ответа:
+//   - 200 OK: соединение с БД успешно
+//   - 500 Internal Server Error: БД не сконфигурирована или недоступна
 func (h *DBHandler) PingDB(w http.ResponseWriter, r *http.Request) {
 	// Если БД не инициализирована, возвращаем ошибку
 	if h.db == nil {

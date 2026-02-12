@@ -13,6 +13,9 @@
 coverage.html
 coverage.out
 
+# pprof profiles
+*.pprof
+
 # Binaries
 cmd/agent/main
 cmd/agent/agent

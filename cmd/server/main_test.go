@@ -18,7 +18,7 @@ import (
 func setupTestServer() *chi.Mux {
 	storage := repository.NewMemStorage()
 	metricsService := service.NewMetricsService(storage)
-	h := handler.NewMetricsHandler(metricsService)
+	h := handler.NewMetricsHandler(metricsService, nil)
 
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
