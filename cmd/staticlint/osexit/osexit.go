@@ -75,22 +75,22 @@ func run(pass *analysis.Pass) (interface{}, error) {
 // isExternalFile проверяет, является ли файл внешним (из кэша или зависимостей)
 func isExternalFile(filename string) bool {
 	filename = filepath.ToSlash(filename)
-	
+
 	// Пропускаем файлы из build cache
 	if strings.Contains(filename, "/go-build/") || strings.Contains(filename, "\\go-build\\") {
 		return true
 	}
-	
+
 	// Пропускаем файлы из модулей (go/pkg/mod)
 	if strings.Contains(filename, "/pkg/mod/") || strings.Contains(filename, "\\pkg\\mod\\") {
 		return true
 	}
-	
+
 	// Пропускаем файлы из стандартной библиотеки Go
 	if strings.Contains(filename, "/Go/src/") || strings.Contains(filename, "\\Go\\src\\") {
 		return true
 	}
-	
+
 	return false
 }
 

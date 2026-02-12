@@ -166,10 +166,10 @@ func TestHashMiddleware_EmptyBody(t *testing.T) {
 
 func TestHashWriter_Write(t *testing.T) {
 	rr := httptest.NewRecorder()
-	
+
 	// Создаём HMAC вручную, как это делается в middleware
 	mac := hmac.New(sha256.New, []byte("test-key"))
-	
+
 	hw := &hashWriter{
 		ResponseWriter: rr,
 		mac:            mac,

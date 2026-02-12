@@ -1,3 +1,4 @@
+// Package buildinfo предоставляет функции для вывода информации о сборке приложения.
 package buildinfo
 
 import "fmt"
