@@ -1,3 +1,4 @@
+// Package logger предоставляет интерфейс для структурированного логирования.
 package logger
 
 import "go.uber.org/zap"

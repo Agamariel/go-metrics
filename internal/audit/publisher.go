@@ -73,7 +73,6 @@ func (p *Publisher) NotifyAll(ctx context.Context, event Event) {
 
 	// Создаем контекст с таймаутом для всех операций аудита
 	auditCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
 
 	for _, obs := range observers {
 		p.wg.Add(1)
@@ -85,6 +84,12 @@ func (p *Publisher) NotifyAll(ctx context.Context, event Event) {
 			}
 		}(obs)
 	}
+
+	// Отменяем контекст в отдельной горутине после завершения всех операций
+	go func() {
+		p.wg.Wait()
+		cancel()
+	}()
 }
 
 // Close ожидает завершения всех активных операций аудита.

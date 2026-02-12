@@ -19,7 +19,7 @@ const (
 	defaultRetryAttempts = 4
 )
 
-// реализация интерфейса Storage для PostgreSQL
+// PostgresStorage реализует интерфейс Storage для PostgreSQL базы данных.
 type PostgresStorage struct {
 	db     *sql.DB
 	logger logger.Logger

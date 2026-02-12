@@ -150,10 +150,13 @@ func TestAudit_Integration_HTTPObserver(t *testing.T) {
 		t.Errorf("Expected status 200, got %d", w.Code)
 	}
 
+	// Даём время на отправку события аудита перед закрытием publisher
+	time.Sleep(200 * time.Millisecond)
+
 	// Закрываем publisher и ждем завершения всех операций
 	publisher.Close()
 
-	// Даем небольшую задержку на доставку
+	// Даем дополнительное время на завершение
 	time.Sleep(100 * time.Millisecond)
 
 	// Проверяем, что событие получено

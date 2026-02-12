@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -12,11 +13,17 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// run содержит основную логику приложения и возвращает ошибку вместо вызова os.Exit
+func run() error {
 	// Создаем и инициализируем приложение
 	application, err := app.NewApplication()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Ошибка инициализации: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("ошибка инициализации: %w", err)
 	}
 
 	// Канал для сигналов остановки
@@ -37,13 +44,13 @@ func main() {
 		defer cancel()
 
 		if err := application.Shutdown(ctx); err != nil {
-			fmt.Fprintf(os.Stderr, "Ошибка при остановке: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("ошибка при остановке: %w", err)
 		}
 	case err := <-errChan:
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Ошибка запуска: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("ошибка запуска: %w", err)
 		}
 	}
+
+	return nil
 }
