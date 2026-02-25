@@ -50,14 +50,14 @@ func (f *FileObserver) Notify(ctx context.Context, event Event) error {
 		f.mu.Lock()
 		defer f.mu.Unlock()
 
-		file, err := os.OpenFile(f.filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-		if err != nil {
-			return fmt.Errorf("не удалось открыть файл: %w", err)
+		file, fileErr := os.OpenFile(f.filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if fileErr != nil {
+			return fmt.Errorf("не удалось открыть файл: %w", fileErr)
 		}
 		defer file.Close()
 
-		if _, err := file.Write(data); err != nil {
-			return fmt.Errorf("ошибка записи в файл: %w", err)
+		if _, writeErr := file.Write(data); writeErr != nil {
+			return fmt.Errorf("ошибка записи в файл: %w", writeErr)
 		}
 
 		return nil

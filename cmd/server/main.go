@@ -3,20 +3,36 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/Agamariel/go-metrics/internal/app"
+	"github.com/Agamariel/go-metrics/pkg/buildinfo"
+)
+
+var (
+	buildVersion string
+	buildDate    string
+	buildCommit  string
 )
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// run содержит основную логику приложения и возвращает ошибку вместо вызова os.Exit
+func run() error {
+	buildinfo.Print(buildVersion, buildDate, buildCommit)
+
 	// Создаем и инициализируем приложение
 	application, err := app.NewApplication()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Ошибка инициализации: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("ошибка инициализации: %w", err)
 	}
 
 	// Канал для сигналов остановки
@@ -37,13 +53,13 @@ func main() {
 		defer cancel()
 
 		if err := application.Shutdown(ctx); err != nil {
-			fmt.Fprintf(os.Stderr, "Ошибка при остановке: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("ошибка при остановке: %w", err)
 		}
 	case err := <-errChan:
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Ошибка запуска: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("ошибка запуска: %w", err)
 		}
 	}
+
+	return nil
 }

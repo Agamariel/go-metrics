@@ -54,7 +54,11 @@ func ExampleMetricsHandler_UpdateMetricHandler() {
 	defer ts.Close()
 
 	// Обновляем gauge-метрику
-	resp, _ := http.Post(ts.URL+"/update/gauge/temperature/36.6", "", nil)
+	resp, err := http.Post(ts.URL+"/update/gauge/temperature/36.6", "", nil)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
 	fmt.Printf("Gauge update: %d\n", resp.StatusCode)
 	resp.Body.Close()
 
@@ -88,7 +92,11 @@ func ExampleMetricsHandler_GetMetricHandler() {
 	ts := httptest.NewServer(r)
 	defer ts.Close()
 
-	resp, _ := http.Get(ts.URL + "/value/gauge/cpu")
+	resp, err := http.Get(ts.URL + "/value/gauge/cpu")
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
 	defer resp.Body.Close()
 
 	var body bytes.Buffer
@@ -120,7 +128,11 @@ func ExampleMetricsHandler_UpdateMetricJSONHandler() {
 	}
 	body, _ := json.Marshal(metric)
 
-	resp, _ := http.Post(ts.URL+"/update", "application/json", bytes.NewReader(body))
+	resp, err := http.Post(ts.URL+"/update", "application/json", bytes.NewReader(body))
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
 	defer resp.Body.Close()
 
 	fmt.Printf("Status: %d\n", resp.StatusCode)
@@ -153,7 +165,11 @@ func ExampleMetricsHandler_UpdateMetricsBatchHandler() {
 	}
 	body, _ := json.Marshal(metrics)
 
-	resp, _ := http.Post(ts.URL+"/updates/", "application/json", bytes.NewReader(body))
+	resp, err := http.Post(ts.URL+"/updates/", "application/json", bytes.NewReader(body))
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
 	defer resp.Body.Close()
 
 	fmt.Printf("Batch update status: %d\n", resp.StatusCode)
@@ -189,7 +205,11 @@ func ExampleMetricsHandler_GetMetricJSONHandler() {
 	}
 	reqBody, _ := json.Marshal(request)
 
-	resp, _ := http.Post(ts.URL+"/value", "application/json", bytes.NewReader(reqBody))
+	resp, err := http.Post(ts.URL+"/value", "application/json", bytes.NewReader(reqBody))
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
 	defer resp.Body.Close()
 
 	var result models.Metrics

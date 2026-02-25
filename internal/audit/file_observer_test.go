@@ -52,7 +52,8 @@ func TestFileObserver_Notify(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	if err := observer.Notify(ctx, event); err != nil {
+	err = observer.Notify(ctx, event)
+	if err != nil {
 		t.Fatalf("Notify failed: %v", err)
 	}
 
@@ -100,7 +101,8 @@ func TestFileObserver_Notify_MultipleEvents(t *testing.T) {
 			IPAddress: "192.168.0." + string(rune('1'+i)),
 		}
 
-		if err := observer.Notify(ctx, event); err != nil {
+		err = observer.Notify(ctx, event)
+		if err != nil {
 			t.Fatalf("Notify %d failed: %v", i, err)
 		}
 	}
@@ -147,7 +149,8 @@ func TestFileObserver_Notify_Append(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	if err := observer.Notify(ctx, event); err != nil {
+	err = observer.Notify(ctx, event)
+	if err != nil {
 		t.Fatalf("Notify failed: %v", err)
 	}
 

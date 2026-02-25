@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"runtime"
 	"runtime/pprof"
@@ -13,21 +14,26 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// run содержит основную логику профайлера и возвращает ошибку вместо вызова os.Exit
+func run() error {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: go run main.go <output-file>")
-		fmt.Println("Example: go run main.go profiles/base.pprof")
-		os.Exit(1)
+		return fmt.Errorf("использование: go run main.go <output-file>\nпример: go run main.go profiles/base.pprof")
 	}
 
 	outputFile := os.Args[1]
 
 	// Запускаем профилирование
 	if err := profileMemory(outputFile); err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("ошибка профилирования: %w", err)
 	}
 
 	fmt.Printf("Memory profile saved to %s\n", outputFile)
+	return nil
 }
 
 func profileMemory(outputFile string) error {

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"sync"
@@ -11,15 +12,30 @@ import (
 
 	"github.com/Agamariel/go-metrics/internal/agent"
 	"github.com/Agamariel/go-metrics/internal/config"
+	"github.com/Agamariel/go-metrics/pkg/buildinfo"
 	"go.uber.org/zap"
 )
 
+var (
+	buildVersion string
+	buildDate    string
+	buildCommit  string
+)
+
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// run содержит основную логику агента и возвращает ошибку вместо вызова os.Exit
+func run() error {
+	buildinfo.Print(buildVersion, buildDate, buildCommit)
+
 	// Инициализируем zap логгер
 	logger, err := zap.NewDevelopment()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Ошибка при инициализации логгера: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("ошибка при инициализации логгера: %w", err)
 	}
 	defer logger.Sync()
 
@@ -30,7 +46,7 @@ func main() {
 	// Загружаем конфигурацию
 	cfg, err := config.LoadAgentConfig()
 	if err != nil {
-		logger.Fatal("Ошибка при загрузке конфигурации", zap.Error(err))
+		return fmt.Errorf("ошибка при загрузке конфигурации: %w", err)
 	}
 
 	// Преобразуем интервалы в time.Duration
@@ -137,4 +153,5 @@ func main() {
 	wg.Wait()
 
 	logger.Info("Агент успешно завершен")
+	return nil
 }

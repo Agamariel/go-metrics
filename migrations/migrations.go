@@ -1,3 +1,4 @@
+// Package migrations содержит SQL миграции базы данных и функцию для их применения.
 package migrations
 
 import "embed"
