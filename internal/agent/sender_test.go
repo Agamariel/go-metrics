@@ -13,7 +13,10 @@ import (
 )
 
 func TestNewMetricsSender(t *testing.T) {
-	sender := NewMetricsSender("http://localhost:8080", "")
+	sender, err := NewMetricsSender("http://localhost:8080", "", "")
+	if err != nil {
+		t.Fatalf("NewMetricsSender returned error: %v", err)
+	}
 
 	if sender == nil {
 		t.Fatal("NewMetricsSender returned nil")
@@ -52,9 +55,12 @@ func TestSendMetric(t *testing.T) {
 	}))
 	defer server.Close()
 
-	sender := NewMetricsSender(server.URL, "")
+	sender, err := NewMetricsSender(server.URL, "", "")
+	if err != nil {
+		t.Fatalf("NewMetricsSender returned error: %v", err)
+	}
 
-	err := sender.SendMetric("gauge", "TestMetric", "123.456")
+	err = sender.SendMetric("gauge", "TestMetric", "123.456")
 	if err != nil {
 		t.Errorf("SendMetric failed: %v", err)
 	}
@@ -67,9 +73,12 @@ func TestSendMetricServerError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	sender := NewMetricsSender(server.URL, "")
+	sender, err := NewMetricsSender(server.URL, "", "")
+	if err != nil {
+		t.Fatalf("NewMetricsSender returned error: %v", err)
+	}
 
-	err := sender.SendMetric("gauge", "TestMetric", "123.456")
+	err = sender.SendMetric("gauge", "TestMetric", "123.456")
 	if err == nil {
 		t.Error("Expected error for server error, got nil")
 	}
@@ -115,7 +124,10 @@ func TestSendAllMetrics(t *testing.T) {
 	}))
 	defer server.Close()
 
-	sender := NewMetricsSender(server.URL, "")
+	sender, err := NewMetricsSender(server.URL, "", "")
+	if err != nil {
+		t.Fatalf("NewMetricsSender returned error: %v", err)
+	}
 
 	gauges := map[string]float64{
 		"Metric1": 123.456,
@@ -128,7 +140,7 @@ func TestSendAllMetrics(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	err := sender.SendAllMetrics(ctx, gauges, counters)
+	err = sender.SendAllMetrics(ctx, gauges, counters)
 	if err != nil {
 		t.Errorf("SendAllMetrics failed: %v", err)
 	}
@@ -164,7 +176,10 @@ func TestSendAllMetricsWithError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	sender := NewMetricsSender(server.URL, "")
+	sender, err := NewMetricsSender(server.URL, "", "")
+	if err != nil {
+		t.Fatalf("NewMetricsSender returned error: %v", err)
+	}
 
 	gauges := map[string]float64{
 		"Metric1": 123.456,
@@ -173,7 +188,7 @@ func TestSendAllMetricsWithError(t *testing.T) {
 	counters := map[string]int64{}
 
 	ctx := context.Background()
-	err := sender.SendAllMetrics(ctx, gauges, counters)
+	err = sender.SendAllMetrics(ctx, gauges, counters)
 	if err == nil {
 		t.Error("Expected error when server returns error, got nil")
 	}
