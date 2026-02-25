@@ -15,6 +15,7 @@ type AgentConfig struct {
 	PollInterval   int    `env:"POLL_INTERVAL"`
 	Key            string `env:"KEY"`
 	RateLimit      int    `env:"RATE_LIMIT"`
+	CryptoKey      string `env:"CRYPTO_KEY"`
 }
 
 // LoadAgentConfig загружает конфигурацию агента из флагов и переменных окружения
@@ -34,6 +35,7 @@ func LoadAgentConfig() (AgentConfig, error) {
 	flag.IntVar(&cfg.PollInterval, "p", cfg.PollInterval, "частота опроса метрик из пакета runtime (в секундах)")
 	flag.StringVar(&cfg.Key, "k", cfg.Key, "ключ для подписи данных")
 	flag.IntVar(&cfg.RateLimit, "l", cfg.RateLimit, "количество одновременно исходящих запросов на сервер")
+	flag.StringVar(&cfg.CryptoKey, "crypto-key", cfg.CryptoKey, "путь к файлу с публичным ключом для шифрования данных")
 
 	flag.Parse()
 

@@ -18,6 +18,7 @@ type ServerConfig struct {
 	Key             string `env:"KEY"`
 	AuditFile       string `env:"AUDIT_FILE"`
 	AuditURL        string `env:"AUDIT_URL"`
+	CryptoKey       string `env:"CRYPTO_KEY"`
 }
 
 // LoadServerConfig загружает конфигурацию сервера из флагов и переменных окружения
@@ -42,6 +43,7 @@ func LoadServerConfig() (ServerConfig, error) {
 	flag.StringVar(&cfg.Key, "k", cfg.Key, "ключ для подписи данных")
 	flag.StringVar(&cfg.AuditFile, "audit-file", cfg.AuditFile, "путь к файлу для сохранения логов аудита")
 	flag.StringVar(&cfg.AuditURL, "audit-url", cfg.AuditURL, "URL для отправки логов аудита")
+	flag.StringVar(&cfg.CryptoKey, "crypto-key", cfg.CryptoKey, "путь к файлу с приватным ключом для расшифровки данных")
 
 	flag.Parse()
 

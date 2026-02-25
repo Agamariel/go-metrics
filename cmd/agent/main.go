@@ -62,13 +62,17 @@ func run() error {
 		zap.Int("report_interval_sec", cfg.ReportInterval),
 		zap.Int("rate_limit", cfg.RateLimit),
 		zap.Bool("hash_enabled", cfg.Key != ""),
+		zap.Bool("crypto_enabled", cfg.CryptoKey != ""),
 	)
 
 	// Создаем коллектор метрик
 	collector := agent.NewMetricsCollector()
 
 	// Создаем клиент для отправки метрик
-	sender := agent.NewMetricsSender(serverURL, cfg.Key)
+	sender, err := agent.NewMetricsSender(serverURL, cfg.Key, cfg.CryptoKey)
+	if err != nil {
+		return fmt.Errorf("ошибка при создании отправщика метрик: %w", err)
+	}
 
 	// Объединяем сбор метрик в одну горутину
 	// будем использовать один тикер на оба сборщика
