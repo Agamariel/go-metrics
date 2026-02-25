@@ -3,6 +3,7 @@ package config
 import (
 	"flag"
 	"fmt"
+	"time"
 
 	"github.com/caarlos0/env/v6"
 )
@@ -21,8 +22,46 @@ type ServerConfig struct {
 	CryptoKey       string `env:"CRYPTO_KEY"`
 }
 
-// LoadServerConfig загружает конфигурацию сервера из флагов и переменных окружения
-// Приоритет: переменные окружения > флаги командной строки > значения по умолчанию
+// serverFileConfig описывает структуру JSON-файла конфигурации сервера
+type serverFileConfig struct {
+	Address       string `json:"address"`
+	Restore       *bool  `json:"restore"`
+	StoreInterval string `json:"store_interval"`
+	StoreFile     string `json:"store_file"`
+	DatabaseDSN   string `json:"database_dsn"`
+	CryptoKey     string `json:"crypto_key"`
+}
+
+// applyServerFileConfig применяет значения из JSON-файла к конфигурации сервера.
+// Поля, для которых флаг был явно задан в командной строке, не перезаписываются.
+func applyServerFileConfig(cfg *ServerConfig, fc serverFileConfig, setFlags map[string]bool) error {
+	if !setFlags["a"] && fc.Address != "" {
+		cfg.Address = fc.Address
+	}
+	if !setFlags["r"] && fc.Restore != nil {
+		cfg.Restore = *fc.Restore
+	}
+	if !setFlags["i"] && fc.StoreInterval != "" {
+		d, err := time.ParseDuration(fc.StoreInterval)
+		if err != nil {
+			return fmt.Errorf("некорректное значение store_interval %q: %w", fc.StoreInterval, err)
+		}
+		cfg.StoreInterval = int(d.Seconds())
+	}
+	if !setFlags["f"] && fc.StoreFile != "" {
+		cfg.FileStoragePath = fc.StoreFile
+	}
+	if !setFlags["d"] && fc.DatabaseDSN != "" {
+		cfg.DatabaseDSN = fc.DatabaseDSN
+	}
+	if !setFlags["crypto-key"] && fc.CryptoKey != "" {
+		cfg.CryptoKey = fc.CryptoKey
+	}
+	return nil
+}
+
+// LoadServerConfig загружает конфигурацию сервера из флагов, файла конфигурации и переменных окружения
+// Приоритет: переменные окружения > флаги командной строки > файл конфигурации > значения по умолчанию
 func LoadServerConfig() (ServerConfig, error) {
 	// Значения по умолчанию
 	cfg := ServerConfig{
@@ -32,6 +71,10 @@ func LoadServerConfig() (ServerConfig, error) {
 		Restore:         true,
 		ShutdownTimeout: 5,
 	}
+
+	var configPath string
+	flag.StringVar(&configPath, "c", "", "путь к файлу конфигурации JSON")
+	flag.StringVar(&configPath, "config", "", "путь к файлу конфигурации JSON")
 
 	// Определяем флаги командной строки
 	flag.StringVar(&cfg.Address, "a", cfg.Address, "адрес эндпоинта HTTP-сервера")
@@ -52,7 +95,23 @@ func LoadServerConfig() (ServerConfig, error) {
 		return cfg, fmt.Errorf("неизвестные аргументы: %v", flag.Args())
 	}
 
-	// Парсим переменные окружения (приоритет выше флагов)
+	// Запоминаем явно заданные флаги
+	setFlags := make(map[string]bool)
+	flag.Visit(func(f *flag.Flag) { setFlags[f.Name] = true })
+
+	// Загружаем JSON-файл конфигурации (приоритет ниже флагов)
+	configPath = resolveConfigPath(configPath)
+	if configPath != "" {
+		var fc serverFileConfig
+		if err := loadJSONFile(configPath, &fc); err != nil {
+			return cfg, err
+		}
+		if err := applyServerFileConfig(&cfg, fc, setFlags); err != nil {
+			return cfg, err
+		}
+	}
+
+	// Парсим переменные окружения (приоритет выше флагов и файла)
 	if err := env.Parse(&cfg); err != nil {
 		return cfg, fmt.Errorf("ошибка при парсинге переменных окружения: %w", err)
 	}
