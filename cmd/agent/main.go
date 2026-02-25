@@ -40,7 +40,7 @@ func run() error {
 	defer logger.Sync()
 
 	// Создаем контекст для graceful shutdown
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
 	defer stop()
 
 	// Загружаем конфигурацию
@@ -106,7 +106,7 @@ func run() error {
 			defer wg.Done()
 			for job := range jobs {
 				// Создаем контекст с таймаутом для отправки метрик
-				sendCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+				sendCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 				err := sender.SendAllMetrics(sendCtx, job.Gauges, job.Counters)
 				cancel()
 
@@ -149,6 +149,14 @@ func run() error {
 	// Ожидаем сигнала завершения
 	<-ctx.Done()
 	logger.Info("Получен сигнал завершения, начинаем graceful shutdown")
+
+	// Финальная отправка метрик, собранных после последнего тика reportInterval
+	gauges := collector.GetGauges()
+	counters := collector.GetCounters()
+	if len(gauges) > 0 || len(counters) > 0 {
+		jobs <- agent.NewMetricsJob(gauges, counters)
+		logger.Info("Финальная отправка метрик добавлена в очередь")
+	}
 
 	// Закрываем канал jobs, чтобы воркеры завершили работу
 	close(jobs)
