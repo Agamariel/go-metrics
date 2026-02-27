@@ -106,7 +106,7 @@ func run() error {
 			defer wg.Done()
 			for job := range jobs {
 				// Создаем контекст с таймаутом для отправки метрик
-				sendCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				sendCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 				err := sender.SendAllMetrics(sendCtx, job.Gauges, job.Counters)
 				cancel()
 

@@ -24,6 +24,8 @@ type agentFileConfig struct {
 	Address        string `json:"address"`
 	ReportInterval string `json:"report_interval"`
 	PollInterval   string `json:"poll_interval"`
+	Key            string `json:"key"`
+	RateLimit      int    `json:"rate_limit"`
 	CryptoKey      string `json:"crypto_key"`
 }
 
@@ -46,6 +48,12 @@ func applyAgentFileConfig(cfg *AgentConfig, fc agentFileConfig, setFlags map[str
 			return fmt.Errorf("некорректное значение poll_interval %q: %w", fc.PollInterval, err)
 		}
 		cfg.PollInterval = int(d.Seconds())
+	}
+	if !setFlags["k"] && fc.Key != "" {
+		cfg.Key = fc.Key
+	}
+	if !setFlags["l"] && fc.RateLimit > 0 {
+		cfg.RateLimit = fc.RateLimit
 	}
 	if !setFlags["crypto-key"] && fc.CryptoKey != "" {
 		cfg.CryptoKey = fc.CryptoKey

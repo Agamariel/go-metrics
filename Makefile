@@ -34,12 +34,21 @@ test:
 	@go test ./... -v
 
 test-cover:
-	@echo "Запуск тестов с покрытием..."
+	@echo "Запуск тестов с покрытием (по пакетам)..."
 	@go test ./... -cover
+
+# Суммарное покрытие по всему модулю.
+# Флаг -coverpkg=./... гарантирует, что тесты каждого пакета
+# инструментируют весь модуль — только так итоговый процент
+# отражает реальное общее покрытие.
+test-cover-total:
+	@echo "Подсчёт суммарного покрытия по всему модулю..."
+	@go test ./... -coverprofile=coverage.out -coverpkg=./... -count=1
+	@go tool cover -func=coverage.out | grep total
 
 test-cover-html:
 	@echo "Генерация HTML отчета о покрытии..."
-	@go test ./... -coverprofile=coverage.out
+	@go test ./... -coverprofile=coverage.out -coverpkg=./... -count=1
 	@go tool cover -html=coverage.out -o coverage.html
 	@echo "✓ Отчет сохранен в coverage.html"
 

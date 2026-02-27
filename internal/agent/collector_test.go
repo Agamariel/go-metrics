@@ -106,6 +106,27 @@ func TestGetCounters(t *testing.T) {
 	}
 }
 
+func TestCollectPSUtilMetrics(t *testing.T) {
+	collector := NewMetricsCollector()
+
+	err := collector.CollectPSUtilMetrics()
+	// На некоторых системах gopsutil может вернуть ошибку — это не критично
+	if err != nil {
+		t.Logf("CollectPSUtilMetrics returned error (может быть на CI): %v", err)
+		return
+	}
+
+	gauges := collector.GetGauges()
+
+	// TotalMemory и FreeMemory должны присутствовать
+	if _, ok := gauges["TotalMemory"]; !ok {
+		t.Error("TotalMemory not found in gauges")
+	}
+	if _, ok := gauges["FreeMemory"]; !ok {
+		t.Error("FreeMemory not found in gauges")
+	}
+}
+
 func TestRandomValueChanges(t *testing.T) {
 	collector := NewMetricsCollector()
 

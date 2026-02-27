@@ -165,6 +165,92 @@ func TestSendAllMetrics(t *testing.T) {
 	}
 }
 
+func TestNewMetricsJob(t *testing.T) {
+	gauges := map[string]float64{"cpu": 0.75}
+	counters := map[string]int64{"requests": 42}
+
+	job := NewMetricsJob(gauges, counters)
+
+	if len(job.Gauges) != 1 || job.Gauges["cpu"] != 0.75 {
+		t.Errorf("Expected Gauges={cpu:0.75}, got %v", job.Gauges)
+	}
+	if len(job.Counters) != 1 || job.Counters["requests"] != 42 {
+		t.Errorf("Expected Counters={requests:42}, got %v", job.Counters)
+	}
+}
+
+func TestSendMetricJSON_Gauge(t *testing.T) {
+	var received models.Metrics
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/update/" {
+			t.Errorf("Expected /update/, got %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		var reader io.Reader = r.Body
+		if r.Header.Get("Content-Encoding") == "gzip" {
+			gz, err := gzip.NewReader(r.Body)
+			if err != nil {
+				t.Errorf("gzip reader: %v", err)
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			defer gz.Close()
+			reader = gz
+		}
+
+		body, _ := io.ReadAll(reader)
+		if err := json.Unmarshal(body, &received); err != nil {
+			t.Errorf("json unmarshal: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	sender, err := NewMetricsSender(server.URL, "", "")
+	if err != nil {
+		t.Fatalf("NewMetricsSender: %v", err)
+	}
+
+	val := 3.14
+	metric := models.Metrics{ID: "pi", MType: models.Gauge, Value: &val}
+
+	ctx := context.Background()
+	if err := sender.SendMetricJSON(ctx, metric); err != nil {
+		t.Fatalf("SendMetricJSON failed: %v", err)
+	}
+
+	if received.ID != "pi" || received.MType != models.Gauge {
+		t.Errorf("Unexpected received metric: %+v", received)
+	}
+	if received.Value == nil || *received.Value != 3.14 {
+		t.Errorf("Expected value 3.14, got %v", received.Value)
+	}
+}
+
+func TestSendMetricJSON_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	sender, err := NewMetricsSender(server.URL, "", "")
+	if err != nil {
+		t.Fatalf("NewMetricsSender: %v", err)
+	}
+
+	val := 1.0
+	metric := models.Metrics{ID: "test", MType: models.Gauge, Value: &val}
+
+	if err := sender.SendMetricJSON(context.Background(), metric); err == nil {
+		t.Error("Expected error for server error, got nil")
+	}
+}
+
 func TestSendAllMetricsWithError(t *testing.T) {
 	// Создаем тестовый сервер, который возвращает ошибку
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

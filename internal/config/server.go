@@ -24,12 +24,16 @@ type ServerConfig struct {
 
 // serverFileConfig описывает структуру JSON-файла конфигурации сервера
 type serverFileConfig struct {
-	Address       string `json:"address"`
-	Restore       *bool  `json:"restore"`
-	StoreInterval string `json:"store_interval"`
-	StoreFile     string `json:"store_file"`
-	DatabaseDSN   string `json:"database_dsn"`
-	CryptoKey     string `json:"crypto_key"`
+	Address         string `json:"address"`
+	Restore         *bool  `json:"restore"`
+	StoreInterval   string `json:"store_interval"`
+	StoreFile       string `json:"store_file"`
+	DatabaseDSN     string `json:"database_dsn"`
+	Key             string `json:"key"`
+	ShutdownTimeout string `json:"shutdown_timeout"`
+	AuditFile       string `json:"audit_file"`
+	AuditURL        string `json:"audit_url"`
+	CryptoKey       string `json:"crypto_key"`
 }
 
 // applyServerFileConfig применяет значения из JSON-файла к конфигурации сервера.
@@ -53,6 +57,22 @@ func applyServerFileConfig(cfg *ServerConfig, fc serverFileConfig, setFlags map[
 	}
 	if !setFlags["d"] && fc.DatabaseDSN != "" {
 		cfg.DatabaseDSN = fc.DatabaseDSN
+	}
+	if !setFlags["k"] && fc.Key != "" {
+		cfg.Key = fc.Key
+	}
+	if !setFlags["t"] && fc.ShutdownTimeout != "" {
+		d, err := time.ParseDuration(fc.ShutdownTimeout)
+		if err != nil {
+			return fmt.Errorf("некорректное значение shutdown_timeout %q: %w", fc.ShutdownTimeout, err)
+		}
+		cfg.ShutdownTimeout = int(d.Seconds())
+	}
+	if !setFlags["audit-file"] && fc.AuditFile != "" {
+		cfg.AuditFile = fc.AuditFile
+	}
+	if !setFlags["audit-url"] && fc.AuditURL != "" {
+		cfg.AuditURL = fc.AuditURL
 	}
 	if !setFlags["crypto-key"] && fc.CryptoKey != "" {
 		cfg.CryptoKey = fc.CryptoKey

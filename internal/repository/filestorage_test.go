@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/Agamariel/go-metrics/internal/models"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
 
@@ -78,25 +80,112 @@ func TestFileStorageWithMockTicker(t *testing.T) {
 		t.Errorf("Ожидали 0 сохранений, получили %d", count)
 	}
 
-	// Вручную триггерим тик
+	// Вручную триггерим тик и ждем подтверждения сохранения
 	mockTick.Tick()
-
-	// Даем время горутине обработать событие
-	time.Sleep(10 * time.Millisecond)
-
-	// Проверяем, что сохранение произошло
-	if count := fs.GetSaveCount(); count != 1 {
-		t.Errorf("Ожидали 1 сохранение после тика, получили %d", count)
-	}
+	waitForSaveCount(t, fs, 1, time.Second)
 
 	// Триггерим еще один тик
 	mockTick.Tick()
-	time.Sleep(10 * time.Millisecond)
+	waitForSaveCount(t, fs, 2, time.Second)
+}
 
-	// Проверяем, что счетчик увеличился
-	if count := fs.GetSaveCount(); count != 2 {
-		t.Errorf("Ожидали 2 сохранения после второго тика, получили %d", count)
+// waitForSaveCount ожидает, пока счётчик сохранений не достигнет expected,
+// опрашивая с шагом 5ms. Используется вместо time.Sleep для стабильности теста.
+func waitForSaveCount(t *testing.T, fs *FileStorage, expected int64, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if fs.GetSaveCount() == expected {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
+	t.Errorf("Ожидали %d сохранений, получили %d (таймаут %s)", expected, fs.GetSaveCount(), timeout)
+}
+
+// TestFileStorageGetMetric проверяет GetMetric через FileStorage
+func TestFileStorageGetMetric(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "test-metrics-*.json")
+	require.NoError(t, err)
+	defer os.Remove(tmpFile.Name())
+	tmpFile.Close()
+
+	logger, _ := zap.NewDevelopment()
+	fs, err := NewFileStorage(FileStorageConfig{
+		FilePath:      tmpFile.Name(),
+		StoreInterval: 0,
+		Logger:        logger,
+	})
+	require.NoError(t, err)
+	defer fs.Close()
+
+	ctx := context.Background()
+	val := 55.5
+	require.NoError(t, fs.UpdateMetric(ctx, models.Metrics{
+		ID: "cpu", MType: models.Gauge, Value: &val,
+	}))
+
+	m, err := fs.GetMetric(ctx, "cpu", models.Gauge)
+	require.NoError(t, err)
+	require.NotNil(t, m.Value)
+	assert.Equal(t, 55.5, *m.Value)
+}
+
+// TestFileStorageGetAllMetrics проверяет GetAllMetrics через FileStorage
+func TestFileStorageGetAllMetrics(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "test-metrics-*.json")
+	require.NoError(t, err)
+	defer os.Remove(tmpFile.Name())
+	tmpFile.Close()
+
+	logger, _ := zap.NewDevelopment()
+	fs, err := NewFileStorage(FileStorageConfig{
+		FilePath:      tmpFile.Name(),
+		StoreInterval: 0,
+		Logger:        logger,
+	})
+	require.NoError(t, err)
+	defer fs.Close()
+
+	ctx := context.Background()
+	v1, d1 := 1.1, int64(10)
+	require.NoError(t, fs.UpdateMetric(ctx, models.Metrics{ID: "g1", MType: models.Gauge, Value: &v1}))
+	require.NoError(t, fs.UpdateMetric(ctx, models.Metrics{ID: "c1", MType: models.Counter, Delta: &d1}))
+
+	all, err := fs.GetAllMetrics(ctx)
+	require.NoError(t, err)
+	assert.Len(t, all, 2)
+}
+
+// TestFileStorageUpdateMetrics проверяет пакетное обновление
+func TestFileStorageUpdateMetrics(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "test-metrics-*.json")
+	require.NoError(t, err)
+	defer os.Remove(tmpFile.Name())
+	tmpFile.Close()
+
+	logger, _ := zap.NewDevelopment()
+	fs, err := NewFileStorage(FileStorageConfig{
+		FilePath:      tmpFile.Name(),
+		StoreInterval: 0,
+		Logger:        logger,
+	})
+	require.NoError(t, err)
+	defer fs.Close()
+
+	ctx := context.Background()
+	v1, v2 := 10.0, 20.0
+	metrics := []models.Metrics{
+		{ID: "m1", MType: models.Gauge, Value: &v1},
+		{ID: "m2", MType: models.Gauge, Value: &v2},
+	}
+	require.NoError(t, fs.UpdateMetrics(ctx, metrics))
+
+	all, err := fs.GetAllMetrics(ctx)
+	require.NoError(t, err)
+	assert.Len(t, all, 2)
+	// UpdateMetrics делает одно пакетное сохранение
+	assert.Equal(t, int64(1), fs.GetSaveCount())
 }
 
 // TestFileStorageSyncMode проверяет синхронный режим (STORE_INTERVAL=0)

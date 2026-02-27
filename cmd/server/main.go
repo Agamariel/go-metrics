@@ -19,6 +19,13 @@ var (
 	buildCommit  string
 )
 
+// appRunner — минимальный интерфейс, необходимый для запуска и остановки сервера.
+// Позволяет подменять реализацию в тестах.
+type appRunner interface {
+	Run() error
+	Shutdown(ctx context.Context) error
+}
+
 func main() {
 	if err := run(); err != nil {
 		log.Fatal(err)
@@ -29,26 +36,34 @@ func main() {
 func run() error {
 	buildinfo.Print(buildVersion, buildDate, buildCommit)
 
-	// Создаем и инициализируем приложение
 	application, err := app.NewApplication()
 	if err != nil {
 		return fmt.Errorf("ошибка инициализации: %w", err)
 	}
 
-	// Канал для сигналов остановки
+	return runApp(application)
+}
+
+// runApp регистрирует обработчики сигналов и передаёт управление в runWithStop.
+func runApp(application appRunner) error {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+	defer signal.Stop(stop)
 
-	// Запускаем приложение в отдельной горутине
+	return runWithStop(application, stop)
+}
+
+// runWithStop содержит логику ожидания сигнала и graceful shutdown.
+// Принимает канал сигналов явно — это позволяет тестам управлять
+// жизненным циклом напрямую без использования системных сигналов.
+func runWithStop(application appRunner, stop <-chan os.Signal) error {
 	errChan := make(chan error, 1)
 	go func() {
 		errChan <- application.Run()
 	}()
 
-	// Ожидаем сигнал остановки или ошибку запуска
 	select {
 	case <-stop:
-		// Graceful shutdown с таймаутом 30 секунд
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
