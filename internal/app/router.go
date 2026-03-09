@@ -12,8 +12,9 @@ func (a *App) setupRouter(metricsHandler *handler.MetricsHandler, dbHandler *han
 	r := chi.NewRouter()
 
 	// Добавляем middleware
-	r.Use(custommiddleware.GzipMiddleware)               // Сжатие gzip
-	r.Use(custommiddleware.HashMiddleware(a.config.Key)) // Проверка и добавление хеша
+	r.Use(custommiddleware.CryptoMiddleware(a.privateKey)) // Расшифровка (первым — до gzip)
+	r.Use(custommiddleware.GzipMiddleware)                 // Сжатие gzip
+	r.Use(custommiddleware.HashMiddleware(a.config.Key))   // Проверка и добавление хеша
 	r.Use(custommiddleware.Logger(a.logger))             // Кастомное логирование
 	r.Use(middleware.Recoverer)                          // Восстановление после паники
 	r.Use(middleware.RequestID)                          // Добавление request ID

@@ -71,13 +71,19 @@ func (p *Publisher) NotifyAll(ctx context.Context, event Event) {
 		return
 	}
 
-	// Создаем контекст с таймаутом для всех операций аудита
+	// Создаем контекст с таймаутом для всех операций аудита.
+	// cancel нельзя вызывать через defer здесь: NotifyAll завершается сразу
+	// после запуска горутин, и преждевременный cancel отменил бы их работу.
+	// cancel вызывается отдельной горутиной после завершения всех наблюдателей.
 	auditCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 
+	var obsWg sync.WaitGroup
 	for _, obs := range observers {
+		obsWg.Add(1)
 		p.wg.Add(1)
 		go func(observer Observer) {
 			defer p.wg.Done()
+			defer obsWg.Done()
 
 			if err := observer.Notify(auditCtx, event); err != nil {
 				p.logger.Error("Ошибка при отправке события аудита", zap.Error(err))
@@ -85,9 +91,9 @@ func (p *Publisher) NotifyAll(ctx context.Context, event Event) {
 		}(obs)
 	}
 
-	// Отменяем контекст в отдельной горутине после завершения всех операций
+	// Освобождаем контекст после завершения всех наблюдателей
 	go func() {
-		p.wg.Wait()
+		obsWg.Wait()
 		cancel()
 	}()
 }

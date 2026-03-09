@@ -39,16 +39,16 @@ func (h *HTTPObserver) Notify(ctx context.Context, event Event) error {
 	// Функция отправки HTTP запроса
 	sendFunc := func() error {
 		// Создаем новый запрос для каждой попытки
-		req, reqErr := http.NewRequestWithContext(ctx, http.MethodPost, h.url, bytes.NewReader(data))
-		if reqErr != nil {
-			return fmt.Errorf("ошибка создания HTTP запроса: %w", reqErr)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, h.url, bytes.NewReader(data))
+		if err != nil {
+			return fmt.Errorf("ошибка создания HTTP запроса: %w", err)
 		}
 
 		req.Header.Set("Content-Type", "application/json")
 
-		resp, respErr := h.client.Do(req)
-		if respErr != nil {
-			return fmt.Errorf("ошибка отправки HTTP запроса: %w", respErr)
+		resp, err := h.client.Do(req)
+		if err != nil {
+			return fmt.Errorf("ошибка отправки HTTP запроса: %w", err)
 		}
 		defer resp.Body.Close()
 

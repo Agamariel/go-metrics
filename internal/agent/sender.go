@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/rsa"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/Agamariel/go-metrics/internal/models"
+	"github.com/Agamariel/go-metrics/pkg/crypto"
 	"github.com/Agamariel/go-metrics/pkg/retry"
 	"github.com/Agamariel/go-metrics/pkg/sha256hash"
 	"github.com/go-resty/resty/v2"
@@ -20,20 +22,32 @@ type MetricsSender struct {
 	serverURL string
 	client    *resty.Client
 	key       string
+	publicKey *rsa.PublicKey
 }
 
-// NewMetricsSender создает новый клиент для отправки метрик
-func NewMetricsSender(serverURL string, key string) *MetricsSender {
+// NewMetricsSender создает новый клиент для отправки метрик.
+// cryptoKeyPath — путь к PEM-файлу с публичным ключом; пустая строка отключает шифрование.
+func NewMetricsSender(serverURL string, key string, cryptoKeyPath string) (*MetricsSender, error) {
 	client := resty.New()
 	client.SetTimeout(5 * time.Second)
 	client.SetHeader("Content-Type", "application/json")
 	client.SetHeader("Accept-Encoding", "gzip")
 
-	return &MetricsSender{
+	s := &MetricsSender{
 		serverURL: serverURL,
 		client:    client,
 		key:       key,
 	}
+
+	if cryptoKeyPath != "" {
+		pubKey, err := crypto.LoadPublicKey(cryptoKeyPath)
+		if err != nil {
+			return nil, fmt.Errorf("загрузка публичного ключа: %w", err)
+		}
+		s.publicKey = pubKey
+	}
+
+	return s, nil
 }
 
 // MetricsJob представляет пакет метрик для отправки в рамках одной задачи worker pool
@@ -63,6 +77,18 @@ func compressJSON(jsonData []byte) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// encryptIfNeeded шифрует данные публичным ключом, если он задан.
+func (s *MetricsSender) encryptIfNeeded(data []byte) ([]byte, error) {
+	if s.publicKey == nil {
+		return data, nil
+	}
+	encrypted, err := crypto.Encrypt(s.publicKey, data)
+	if err != nil {
+		return nil, fmt.Errorf("шифрование данных: %w", err)
+	}
+	return encrypted, nil
 }
 
 // createRequestWithHash создает resty.Request с хешем
@@ -108,16 +134,22 @@ func (s *MetricsSender) SendMetricJSON(ctx context.Context, metric models.Metric
 		return fmt.Errorf("failed to marshal metric: %w", err)
 	}
 
-	// Сжимаем данные (передаем серриализованный jsonData)
+	// Сжимаем данные
 	compressed, err := compressJSON(jsonData)
 	if err != nil {
 		return fmt.Errorf("failed to compress data: %w", err)
 	}
 
+	// Шифруем сжатые данные (если задан публичный ключ)
+	body, err := s.encryptIfNeeded(compressed)
+	if err != nil {
+		return err
+	}
+
 	// Создаем запрос с хешем
 	request := s.createRequestWithHash(ctx, jsonData)
 
-	resp, err := request.SetBody(compressed).Post(url)
+	resp, err := request.SetBody(body).Post(url)
 
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
@@ -183,6 +215,12 @@ func (s *MetricsSender) SendMetricsBatch(ctx context.Context, metrics []models.M
 		return fmt.Errorf("compress: %w", err)
 	}
 
+	// Шифруем сжатые данные (если задан публичный ключ)
+	body, err := s.encryptIfNeeded(compressed)
+	if err != nil {
+		return err
+	}
+
 	url := s.serverURL + "/updates/"
 	strategy := retry.Linear(1*time.Second, 3*time.Second, 5*time.Second)
 
@@ -195,7 +233,7 @@ func (s *MetricsSender) SendMetricsBatch(ctx context.Context, metrics []models.M
 			request := s.createRequestWithHash(ctx, jsonData)
 
 			resp, err := request.
-				SetBody(compressed).
+				SetBody(body).
 				Post(url)
 
 			if err != nil {

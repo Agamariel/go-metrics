@@ -1,184 +1,174 @@
 package main
 
 import (
-	"io"
-	"net/http"
-	"net/http/httptest"
-	"strings"
+	"context"
+	"errors"
+	"os"
 	"testing"
+	"time"
 
-	"github.com/Agamariel/go-metrics/internal/handler"
-	"github.com/Agamariel/go-metrics/internal/repository"
-	"github.com/Agamariel/go-metrics/internal/service"
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-// Создаем тестовый сервер
-func setupTestServer() *chi.Mux {
-	storage := repository.NewMemStorage()
-	metricsService := service.NewMetricsService(storage)
-	h := handler.NewMetricsHandler(metricsService, nil)
-
-	r := chi.NewRouter()
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
-	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
-
-	r.Post("/update/{type}/{name}/{value}", h.UpdateMetricHandler)
-	r.Get("/value/{type}/{name}", h.GetMetricHandler)
-	r.Get("/", h.ListMetricsHandler)
-
-	return r
+// mockApp реализует appRunner для тестов.
+type mockApp struct {
+	runErr      error
+	shutdownErr error
+	runDelay    time.Duration // задержка перед возвратом из Run (имитирует работающий сервер)
+	shutdownCh  chan struct{} // закрывается при вызове Shutdown
 }
 
-func TestIntegrationFlow(t *testing.T) {
-	router := setupTestServer()
-	ts := httptest.NewServer(router)
-	defer ts.Close()
-
-	// Тест 1: Добавление gauge метрики
-	resp, err := http.Post(ts.URL+"/update/gauge/TestGauge/123.456", "text/plain", nil)
-	if err != nil {
-		t.Fatalf("Failed to post gauge: %v", err)
+func newMockApp() *mockApp {
+	return &mockApp{
+		shutdownCh: make(chan struct{}),
+		runDelay:   24 * time.Hour, // блокируется до вызова Shutdown
 	}
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("Expected status %d for gauge update, got %d", http.StatusOK, resp.StatusCode)
-	}
-	resp.Body.Close()
-
-	// Тест 2: Добавление counter метрики
-	resp, err = http.Post(ts.URL+"/update/counter/TestCounter/42", "text/plain", nil)
-	if err != nil {
-		t.Fatalf("Failed to post counter: %v", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("Expected status %d for counter update, got %d", http.StatusOK, resp.StatusCode)
-	}
-	resp.Body.Close()
-
-	// Тест 3: Получение gauge метрики
-	resp, err = http.Get(ts.URL + "/value/gauge/TestGauge")
-	if err != nil {
-		t.Fatalf("Failed to get gauge: %v", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("Expected status %d for gauge get, got %d", http.StatusOK, resp.StatusCode)
-	}
-	body, _ := io.ReadAll(resp.Body)
-	if string(body) != "123.456" {
-		t.Errorf("Expected gauge value '123.456', got '%s'", string(body))
-	}
-	resp.Body.Close()
-
-	// Тест 4: Получение counter метрики
-	resp, err = http.Get(ts.URL + "/value/counter/TestCounter")
-	if err != nil {
-		t.Fatalf("Failed to get counter: %v", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("Expected status %d for counter get, got %d", http.StatusOK, resp.StatusCode)
-	}
-	body, _ = io.ReadAll(resp.Body)
-	if string(body) != "42" {
-		t.Errorf("Expected counter value '42', got '%s'", string(body))
-	}
-	resp.Body.Close()
-
-	// Тест 5: Получение несуществующей метрики
-	resp, err = http.Get(ts.URL + "/value/gauge/NonExistent")
-	if err != nil {
-		t.Fatalf("Failed to get non-existent metric: %v", err)
-	}
-	if resp.StatusCode != http.StatusNotFound {
-		t.Errorf("Expected status %d for non-existent metric, got %d", http.StatusNotFound, resp.StatusCode)
-	}
-	resp.Body.Close()
-
-	// Тест 6: Получение HTML страницы со всеми метриками
-	resp, err = http.Get(ts.URL + "/")
-	if err != nil {
-		t.Fatalf("Failed to get metrics list: %v", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("Expected status %d for metrics list, got %d", http.StatusOK, resp.StatusCode)
-	}
-	body, _ = io.ReadAll(resp.Body)
-	bodyStr := string(body)
-
-	if !strings.Contains(bodyStr, "TestGauge") {
-		t.Error("Metrics list should contain TestGauge")
-	}
-	if !strings.Contains(bodyStr, "TestCounter") {
-		t.Error("Metrics list should contain TestCounter")
-	}
-	// Проверяем значение gauge (может быть в формате 123.456000)
-	if !strings.Contains(bodyStr, "123.456") && !strings.Contains(bodyStr, "123.4560") {
-		t.Errorf("Metrics list should contain gauge value, got: %s", bodyStr)
-	}
-	if !strings.Contains(bodyStr, "42") {
-		t.Error("Metrics list should contain counter value")
-	}
-	resp.Body.Close()
-
-	// Тест 7: Накопление counter метрики
-	resp, err = http.Post(ts.URL+"/update/counter/TestCounter/10", "text/plain", nil)
-	if err != nil {
-		t.Fatalf("Failed to update counter: %v", err)
-	}
-	resp.Body.Close()
-
-	resp, err = http.Get(ts.URL + "/value/counter/TestCounter")
-	if err != nil {
-		t.Fatalf("Failed to get accumulated counter: %v", err)
-	}
-	body, _ = io.ReadAll(resp.Body)
-	if string(body) != "52" { // 42 + 10
-		t.Errorf("Expected accumulated counter value '52', got '%s'", string(body))
-	}
-	resp.Body.Close()
 }
 
-func TestInvalidRequests(t *testing.T) {
-	router := setupTestServer()
-	ts := httptest.NewServer(router)
-	defer ts.Close()
+func (m *mockApp) Run() error {
+	select {
+	case <-m.shutdownCh:
+		return m.runErr
+	case <-time.After(m.runDelay):
+		return m.runErr
+	}
+}
 
-	tests := []struct {
-		name           string
-		url            string
-		expectedStatus int
-	}{
-		{"Invalid metric type", ts.URL + "/update/invalid/Test/123", http.StatusBadRequest},
-		{"Invalid gauge value", ts.URL + "/update/gauge/Test/notanumber", http.StatusBadRequest},
-		{"Invalid counter value", ts.URL + "/update/counter/Test/notanumber", http.StatusBadRequest},
-		{"Counter with float", ts.URL + "/update/counter/Test/123.456", http.StatusBadRequest},
-		{"Get invalid type", ts.URL + "/value/invalid/Test", http.StatusBadRequest},
+func (m *mockApp) Shutdown(ctx context.Context) error {
+	close(m.shutdownCh)
+	return m.shutdownErr
+}
+
+// sendSignal посылает сигнал в канал и закрывает его.
+func sendSignal(stop chan<- os.Signal) {
+	stop <- os.Interrupt
+}
+
+//  тесты runWithStop
+
+func TestRunWithStop_StopsOnSignal(t *testing.T) {
+	app := newMockApp()
+	stop := make(chan os.Signal, 1)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- runWithStop(app, stop)
+	}()
+
+	time.Sleep(10 * time.Millisecond)
+	sendSignal(stop)
+
+	select {
+	case err := <-done:
+		assert.NoError(t, err)
+	case <-time.After(3 * time.Second):
+		t.Fatal("runWithStop не завершился после сигнала")
+	}
+}
+
+func TestRunWithStop_ShutdownError(t *testing.T) {
+	shutdownErr := errors.New("shutdown failure")
+	app := newMockApp()
+	app.shutdownErr = shutdownErr
+
+	stop := make(chan os.Signal, 1)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- runWithStop(app, stop)
+	}()
+
+	time.Sleep(10 * time.Millisecond)
+	sendSignal(stop)
+
+	select {
+	case err := <-done:
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "ошибка при остановке")
+		assert.Contains(t, err.Error(), "shutdown failure")
+	case <-time.After(3 * time.Second):
+		t.Fatal("runWithStop не завершился")
+	}
+}
+
+func TestRunWithStop_RunError(t *testing.T) {
+	startErr := errors.New("port already in use")
+	app := &mockApp{
+		runErr:     startErr,
+		runDelay:   0,
+		shutdownCh: make(chan struct{}),
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var resp *http.Response
-			var err error
+	stop := make(chan os.Signal, 1)
+	err := runWithStop(app, stop)
 
-			if strings.Contains(tt.url, "/update/") {
-				resp, err = http.Post(tt.url, "text/plain", nil)
-			} else {
-				resp, err = http.Get(tt.url)
-			}
-			if err != nil {
-				t.Fatalf("Request failed: %v", err)
-			}
-			defer func() {
-				if resp != nil {
-					resp.Body.Close()
-				}
-			}()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ошибка запуска")
+	assert.Contains(t, err.Error(), "port already in use")
+}
 
-			if resp.StatusCode != tt.expectedStatus {
-				t.Errorf("Expected status %d, got %d", tt.expectedStatus, resp.StatusCode)
-			}
-		})
+func TestRunWithStop_RunSuccessNoError(t *testing.T) {
+	app := &mockApp{
+		runErr:     nil,
+		runDelay:   0,
+		shutdownCh: make(chan struct{}),
 	}
+
+	stop := make(chan os.Signal, 1)
+	err := runWithStop(app, stop)
+	assert.NoError(t, err)
+}
+
+func TestRunWithStop_ShutdownCalledAfterSignal(t *testing.T) {
+	app := newMockApp()
+	stop := make(chan os.Signal, 1)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- runWithStop(app, stop)
+	}()
+
+	time.Sleep(10 * time.Millisecond)
+	sendSignal(stop)
+
+	select {
+	case <-done:
+		// Если Shutdown был вызван, shutdownCh закрыт — Run тоже должен завершиться
+		select {
+		case <-app.shutdownCh:
+			// ok: Shutdown был вызван
+		default:
+			t.Error("Shutdown не был вызван после получения сигнала")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("runWithStop не завершился")
+	}
+}
+
+//  тест runApp: проверяем регистрацию сигналов через runApp
+
+func TestRunApp_RunErrorPropagated(t *testing.T) {
+	startErr := errors.New("listen tcp: address already in use")
+	app := &mockApp{
+		runErr:     startErr,
+		runDelay:   0,
+		shutdownCh: make(chan struct{}),
+	}
+
+	err := runApp(app)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ошибка запуска")
+}
+
+func TestRunApp_CleanExitWhenRunReturnsNil(t *testing.T) {
+	app := &mockApp{
+		runErr:     nil,
+		runDelay:   0,
+		shutdownCh: make(chan struct{}),
+	}
+
+	err := runApp(app)
+	assert.NoError(t, err)
 }

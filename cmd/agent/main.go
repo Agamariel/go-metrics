@@ -40,7 +40,7 @@ func run() error {
 	defer logger.Sync()
 
 	// Создаем контекст для graceful shutdown
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
 	defer stop()
 
 	// Загружаем конфигурацию
@@ -62,13 +62,17 @@ func run() error {
 		zap.Int("report_interval_sec", cfg.ReportInterval),
 		zap.Int("rate_limit", cfg.RateLimit),
 		zap.Bool("hash_enabled", cfg.Key != ""),
+		zap.Bool("crypto_enabled", cfg.CryptoKey != ""),
 	)
 
 	// Создаем коллектор метрик
 	collector := agent.NewMetricsCollector()
 
 	// Создаем клиент для отправки метрик
-	sender := agent.NewMetricsSender(serverURL, cfg.Key)
+	sender, err := agent.NewMetricsSender(serverURL, cfg.Key, cfg.CryptoKey)
+	if err != nil {
+		return fmt.Errorf("ошибка при создании отправщика метрик: %w", err)
+	}
 
 	// Объединяем сбор метрик в одну горутину
 	// будем использовать один тикер на оба сборщика
@@ -145,6 +149,14 @@ func run() error {
 	// Ожидаем сигнала завершения
 	<-ctx.Done()
 	logger.Info("Получен сигнал завершения, начинаем graceful shutdown")
+
+	// Финальная отправка метрик, собранных после последнего тика reportInterval
+	gauges := collector.GetGauges()
+	counters := collector.GetCounters()
+	if len(gauges) > 0 || len(counters) > 0 {
+		jobs <- agent.NewMetricsJob(gauges, counters)
+		logger.Info("Финальная отправка метрик добавлена в очередь")
+	}
 
 	// Закрываем канал jobs, чтобы воркеры завершили работу
 	close(jobs)

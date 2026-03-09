@@ -236,6 +236,107 @@ func TestGetAllMetrics(t *testing.T) {
 	}
 }
 
+func TestUpdateMetric(t *testing.T) {
+	storage := NewMockStorage()
+	svc := NewMetricsService(storage)
+	ctx := context.Background()
+
+	val := 42.0
+	m := models.Metrics{ID: "cpu", MType: models.Gauge, Value: &val}
+	if err := svc.UpdateMetric(ctx, m); err != nil {
+		t.Fatalf("UpdateMetric failed: %v", err)
+	}
+
+	got, err := svc.GetMetric(ctx, "cpu", models.Gauge)
+	if err != nil {
+		t.Fatalf("GetMetric failed: %v", err)
+	}
+	if got.Value == nil || *got.Value != 42.0 {
+		t.Errorf("Expected 42.0, got %v", got.Value)
+	}
+}
+
+func TestUpdateMetrics_Batch(t *testing.T) {
+	storage := NewMockStorage()
+	svc := NewMetricsService(storage)
+	ctx := context.Background()
+
+	v1, d1 := 1.0, int64(10)
+	metrics := []models.Metrics{
+		{ID: "g1", MType: models.Gauge, Value: &v1},
+		{ID: "c1", MType: models.Counter, Delta: &d1},
+	}
+
+	if err := svc.UpdateMetrics(ctx, metrics); err != nil {
+		t.Fatalf("UpdateMetrics failed: %v", err)
+	}
+
+	all, _ := svc.GetAllMetrics(ctx)
+	if len(all) != 2 {
+		t.Errorf("Expected 2 metrics, got %d", len(all))
+	}
+}
+
+func TestUpdateMetrics_Empty(t *testing.T) {
+	storage := NewMockStorage()
+	svc := NewMetricsService(storage)
+	ctx := context.Background()
+
+	if err := svc.UpdateMetrics(ctx, nil); err != nil {
+		t.Fatalf("UpdateMetrics(nil) returned error: %v", err)
+	}
+}
+
+func TestUpdateGauge(t *testing.T) {
+	storage := NewMockStorage()
+	svc := NewMetricsService(storage)
+	ctx := context.Background()
+
+	if err := svc.UpdateGauge(ctx, "temp", 36.6); err != nil {
+		t.Fatalf("UpdateGauge failed: %v", err)
+	}
+
+	got, err := svc.GetMetric(ctx, "temp", models.Gauge)
+	if err != nil || got.Value == nil || *got.Value != 36.6 {
+		t.Errorf("Expected 36.6, got %v, err=%v", got.Value, err)
+	}
+}
+
+func TestUpdateGauge_EmptyName(t *testing.T) {
+	storage := NewMockStorage()
+	svc := NewMetricsService(storage)
+	ctx := context.Background()
+
+	if err := svc.UpdateGauge(ctx, "", 1.0); err != ErrInvalidName {
+		t.Errorf("Expected ErrInvalidName, got %v", err)
+	}
+}
+
+func TestUpdateCounter(t *testing.T) {
+	storage := NewMockStorage()
+	svc := NewMetricsService(storage)
+	ctx := context.Background()
+
+	if err := svc.UpdateCounter(ctx, "requests", 5); err != nil {
+		t.Fatalf("UpdateCounter failed: %v", err)
+	}
+
+	got, err := svc.GetMetric(ctx, "requests", models.Counter)
+	if err != nil || got.Delta == nil || *got.Delta != 5 {
+		t.Errorf("Expected 5, got %v, err=%v", got.Delta, err)
+	}
+}
+
+func TestUpdateCounter_EmptyName(t *testing.T) {
+	storage := NewMockStorage()
+	svc := NewMetricsService(storage)
+	ctx := context.Background()
+
+	if err := svc.UpdateCounter(ctx, "   ", 1); err != ErrInvalidName {
+		t.Errorf("Expected ErrInvalidName, got %v", err)
+	}
+}
+
 func TestGetAllMetricsEmpty(t *testing.T) {
 	storage := NewMockStorage()
 	service := NewMetricsService(storage)

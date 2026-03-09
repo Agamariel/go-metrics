@@ -414,6 +414,270 @@ func TestListMetricsHandler(t *testing.T) {
 	}
 }
 
+func newJSONRequest(t *testing.T, method, url, body string) *http.Request {
+	t.Helper()
+	req := httptest.NewRequest(method, url, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	return req
+}
+
+// UpdateMetricJSONHandler
+
+func TestUpdateMetricJSONHandler_Gauge(t *testing.T) {
+	storage := NewMockStorage()
+	svc := service.NewMetricsService(storage)
+	h := NewMetricsHandler(svc, nil)
+
+	body := `{"id":"cpu","type":"gauge","value":0.75}`
+	req := newJSONRequest(t, http.MethodPost, "/update/", body)
+	w := httptest.NewRecorder()
+
+	h.UpdateMetricJSONHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUpdateMetricJSONHandler_Counter(t *testing.T) {
+	storage := NewMockStorage()
+	svc := service.NewMetricsService(storage)
+	h := NewMetricsHandler(svc, nil)
+
+	body := `{"id":"hits","type":"counter","delta":10}`
+	req := newJSONRequest(t, http.MethodPost, "/update/", body)
+	w := httptest.NewRecorder()
+
+	h.UpdateMetricJSONHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUpdateMetricJSONHandler_WrongContentType(t *testing.T) {
+	h := NewMetricsHandler(service.NewMetricsService(NewMockStorage()), nil)
+	req := httptest.NewRequest(http.MethodPost, "/update/", strings.NewReader("{}"))
+	req.Header.Set("Content-Type", "text/plain")
+	w := httptest.NewRecorder()
+
+	h.UpdateMetricJSONHandler(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400, got %d", w.Code)
+	}
+}
+
+func TestUpdateMetricJSONHandler_InvalidJSON(t *testing.T) {
+	h := NewMetricsHandler(service.NewMetricsService(NewMockStorage()), nil)
+	req := newJSONRequest(t, http.MethodPost, "/update/", "not json")
+	w := httptest.NewRecorder()
+
+	h.UpdateMetricJSONHandler(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400, got %d", w.Code)
+	}
+}
+
+func TestUpdateMetricJSONHandler_MissingFields(t *testing.T) {
+	h := NewMetricsHandler(service.NewMetricsService(NewMockStorage()), nil)
+	req := newJSONRequest(t, http.MethodPost, "/update/", `{"id":"","type":""}`)
+	w := httptest.NewRecorder()
+
+	h.UpdateMetricJSONHandler(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400, got %d", w.Code)
+	}
+}
+
+func TestUpdateMetricJSONHandler_GaugeNilValue(t *testing.T) {
+	h := NewMetricsHandler(service.NewMetricsService(NewMockStorage()), nil)
+	req := newJSONRequest(t, http.MethodPost, "/update/", `{"id":"cpu","type":"gauge"}`)
+	w := httptest.NewRecorder()
+
+	h.UpdateMetricJSONHandler(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400, got %d", w.Code)
+	}
+}
+
+func TestUpdateMetricJSONHandler_CounterNilDelta(t *testing.T) {
+	h := NewMetricsHandler(service.NewMetricsService(NewMockStorage()), nil)
+	req := newJSONRequest(t, http.MethodPost, "/update/", `{"id":"hits","type":"counter"}`)
+	w := httptest.NewRecorder()
+
+	h.UpdateMetricJSONHandler(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400, got %d", w.Code)
+	}
+}
+
+func TestUpdateMetricJSONHandler_InvalidType(t *testing.T) {
+	h := NewMetricsHandler(service.NewMetricsService(NewMockStorage()), nil)
+	req := newJSONRequest(t, http.MethodPost, "/update/", `{"id":"x","type":"unknown","value":1.0}`)
+	w := httptest.NewRecorder()
+
+	h.UpdateMetricJSONHandler(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400, got %d", w.Code)
+	}
+}
+
+// GetMetricJSONHandler
+
+func TestGetMetricJSONHandler_Found(t *testing.T) {
+	storage := NewMockStorage()
+	storage.gauges["cpu"] = 0.5
+	h := NewMetricsHandler(service.NewMetricsService(storage), nil)
+
+	req := newJSONRequest(t, http.MethodPost, "/value/", `{"id":"cpu","type":"gauge"}`)
+	w := httptest.NewRecorder()
+
+	h.GetMetricJSONHandler(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGetMetricJSONHandler_NotFound(t *testing.T) {
+	h := NewMetricsHandler(service.NewMetricsService(NewMockStorage()), nil)
+	req := newJSONRequest(t, http.MethodPost, "/value/", `{"id":"missing","type":"gauge"}`)
+	w := httptest.NewRecorder()
+
+	h.GetMetricJSONHandler(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected 404, got %d", w.Code)
+	}
+}
+
+func TestGetMetricJSONHandler_WrongContentType(t *testing.T) {
+	h := NewMetricsHandler(service.NewMetricsService(NewMockStorage()), nil)
+	req := httptest.NewRequest(http.MethodPost, "/value/", strings.NewReader("{}"))
+	w := httptest.NewRecorder()
+
+	h.GetMetricJSONHandler(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400, got %d", w.Code)
+	}
+}
+
+func TestGetMetricJSONHandler_InvalidJSON(t *testing.T) {
+	h := NewMetricsHandler(service.NewMetricsService(NewMockStorage()), nil)
+	req := newJSONRequest(t, http.MethodPost, "/value/", "bad json")
+	w := httptest.NewRecorder()
+
+	h.GetMetricJSONHandler(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400, got %d", w.Code)
+	}
+}
+
+func TestGetMetricJSONHandler_MissingFields(t *testing.T) {
+	h := NewMetricsHandler(service.NewMetricsService(NewMockStorage()), nil)
+	req := newJSONRequest(t, http.MethodPost, "/value/", `{"id":"","type":""}`)
+	w := httptest.NewRecorder()
+
+	h.GetMetricJSONHandler(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400, got %d", w.Code)
+	}
+}
+
+// UpdateMetricsBatchHandler
+
+func TestUpdateMetricsBatchHandler_Success(t *testing.T) {
+	h := NewMetricsHandler(service.NewMetricsService(NewMockStorage()), nil)
+
+	body := `[{"id":"cpu","type":"gauge","value":1.5},{"id":"hits","type":"counter","delta":5}]`
+	req := newJSONRequest(t, http.MethodPost, "/updates/", body)
+	w := httptest.NewRecorder()
+
+	h.UpdateMetricsBatchHandler(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUpdateMetricsBatchHandler_WrongContentType(t *testing.T) {
+	h := NewMetricsHandler(service.NewMetricsService(NewMockStorage()), nil)
+	req := httptest.NewRequest(http.MethodPost, "/updates/", strings.NewReader("[]"))
+	w := httptest.NewRecorder()
+
+	h.UpdateMetricsBatchHandler(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400, got %d", w.Code)
+	}
+}
+
+func TestUpdateMetricsBatchHandler_EmptyArray(t *testing.T) {
+	h := NewMetricsHandler(service.NewMetricsService(NewMockStorage()), nil)
+	req := newJSONRequest(t, http.MethodPost, "/updates/", `[]`)
+	w := httptest.NewRecorder()
+
+	h.UpdateMetricsBatchHandler(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400, got %d", w.Code)
+	}
+}
+
+func TestUpdateMetricsBatchHandler_InvalidJSON(t *testing.T) {
+	h := NewMetricsHandler(service.NewMetricsService(NewMockStorage()), nil)
+	req := newJSONRequest(t, http.MethodPost, "/updates/", `not json`)
+	w := httptest.NewRecorder()
+
+	h.UpdateMetricsBatchHandler(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400, got %d", w.Code)
+	}
+}
+
+func TestUpdateMetricsBatchHandler_MissingID(t *testing.T) {
+	h := NewMetricsHandler(service.NewMetricsService(NewMockStorage()), nil)
+	body := `[{"id":"","type":"gauge","value":1.5}]`
+	req := newJSONRequest(t, http.MethodPost, "/updates/", body)
+	w := httptest.NewRecorder()
+
+	h.UpdateMetricsBatchHandler(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400, got %d", w.Code)
+	}
+}
+
+func TestUpdateMetricsBatchHandler_NilGaugeValue(t *testing.T) {
+	h := NewMetricsHandler(service.NewMetricsService(NewMockStorage()), nil)
+	body := `[{"id":"cpu","type":"gauge"}]`
+	req := newJSONRequest(t, http.MethodPost, "/updates/", body)
+	w := httptest.NewRecorder()
+
+	h.UpdateMetricsBatchHandler(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400, got %d", w.Code)
+	}
+}
+
+func TestUpdateMetricsBatchHandler_NilCounterDelta(t *testing.T) {
+	h := NewMetricsHandler(service.NewMetricsService(NewMockStorage()), nil)
+	body := `[{"id":"hits","type":"counter"}]`
+	req := newJSONRequest(t, http.MethodPost, "/updates/", body)
+	w := httptest.NewRecorder()
+
+	h.UpdateMetricsBatchHandler(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400, got %d", w.Code)
+	}
+}
+
+func TestUpdateMetricsBatchHandler_InvalidType(t *testing.T) {
+	h := NewMetricsHandler(service.NewMetricsService(NewMockStorage()), nil)
+	body := `[{"id":"x","type":"unknown","value":1.0}]`
+	req := newJSONRequest(t, http.MethodPost, "/updates/", body)
+	w := httptest.NewRecorder()
+
+	h.UpdateMetricsBatchHandler(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400, got %d", w.Code)
+	}
+}
+
 func TestListMetricsHandlerEmpty(t *testing.T) {
 	storage := NewMockStorage()
 	svc := service.NewMetricsService(storage)

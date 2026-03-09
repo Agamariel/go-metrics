@@ -119,6 +119,60 @@ func TestGetMetricNotFound(t *testing.T) {
 	}
 }
 
+func TestUpdateMetrics_Batch(t *testing.T) {
+	storage := NewMemStorage()
+	ctx := context.Background()
+
+	v1, v2 := 1.1, 2.2
+	d1 := int64(5)
+	metrics := []models.Metrics{
+		{ID: "g1", MType: models.Gauge, Value: &v1},
+		{ID: "g2", MType: models.Gauge, Value: &v2},
+		{ID: "c1", MType: models.Counter, Delta: &d1},
+	}
+
+	if err := storage.UpdateMetrics(ctx, metrics); err != nil {
+		t.Fatalf("UpdateMetrics failed: %v", err)
+	}
+
+	m, err := storage.GetMetric(ctx, "g1", models.Gauge)
+	if err != nil || m.Value == nil || *m.Value != 1.1 {
+		t.Errorf("Expected g1=1.1, got %v", m.Value)
+	}
+
+	m, err = storage.GetMetric(ctx, "c1", models.Counter)
+	if err != nil || m.Delta == nil || *m.Delta != 5 {
+		t.Errorf("Expected c1=5, got %v", m.Delta)
+	}
+}
+
+func TestUpdateMetrics_NilFieldsSkipped(t *testing.T) {
+	storage := NewMemStorage()
+	ctx := context.Background()
+
+	// Метрики без Value/Delta не должны паниковать
+	metrics := []models.Metrics{
+		{ID: "g_nil", MType: models.Gauge, Value: nil},
+		{ID: "c_nil", MType: models.Counter, Delta: nil},
+	}
+	if err := storage.UpdateMetrics(ctx, metrics); err != nil {
+		t.Fatalf("UpdateMetrics failed: %v", err)
+	}
+
+	// Метрики не были записаны (nil-значения пропускаются)
+	_, errG := storage.GetMetric(ctx, "g_nil", models.Gauge)
+	if !errors.Is(errG, ErrNotFound) {
+		t.Error("Expected ErrNotFound for nil gauge")
+	}
+}
+
+func TestClose_NoError(t *testing.T) {
+	storage := NewMemStorage()
+	if err := storage.Close(); err != nil {
+		t.Errorf("Close returned error: %v", err)
+	}
+}
+
 func TestConcurrentUpdates(t *testing.T) {
 	storage := NewMemStorage()
 	ctx := context.Background()
