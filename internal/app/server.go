@@ -3,14 +3,29 @@ package app
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
 
 	"go.uber.org/zap"
 )
 
-// Run запускает HTTP сервер.
+// Run запускает HTTP и (при наличии конфигурации) gRPC сервер.
 func (a *App) Run() error {
-	a.logger.Info("Сервер запущен", zap.String("address", a.config.Address))
+	a.logger.Info("HTTP-сервер запущен", zap.String("address", a.config.Address))
+
+	if a.grpcServer != nil {
+		go func() {
+			lis, err := net.Listen("tcp", a.config.GRPCAddress)
+			if err != nil {
+				a.logger.Error("Ошибка запуска gRPC listener", zap.Error(err))
+				return
+			}
+			a.logger.Info("gRPC-сервер запущен", zap.String("address", a.config.GRPCAddress))
+			if err := a.grpcServer.Serve(lis); err != nil {
+				a.logger.Error("Ошибка gRPC-сервера", zap.Error(err))
+			}
+		}()
+	}
 
 	err := a.server.ListenAndServe()
 	if err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -28,6 +43,12 @@ func (a *App) Run() error {
 // 4. Database (закрывает соединения)
 func (a *App) Shutdown(ctx context.Context) error {
 	a.logger.Info("Получен сигнал остановки, завершаем работу...")
+
+	// Останавливаем gRPC-сервер
+	if a.grpcServer != nil {
+		a.logger.Info("Останавливаем gRPC-сервер")
+		a.grpcServer.GracefulStop()
+	}
 
 	// Останавливаем HTTP сервер
 	a.logger.Info("Начинаем graceful shutdown")

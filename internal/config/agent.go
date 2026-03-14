@@ -17,6 +17,7 @@ type AgentConfig struct {
 	Key            string `env:"KEY"`
 	RateLimit      int    `env:"RATE_LIMIT"`
 	CryptoKey      string `env:"CRYPTO_KEY"`
+	GRPCAddress    string `env:"GRPC_ADDRESS"`
 }
 
 // agentFileConfig описывает структуру JSON-файла конфигурации агента
@@ -27,6 +28,7 @@ type agentFileConfig struct {
 	Key            string `json:"key"`
 	RateLimit      int    `json:"rate_limit"`
 	CryptoKey      string `json:"crypto_key"`
+	GRPCAddress    string `json:"grpc_address"`
 }
 
 // applyAgentFileConfig применяет значения из JSON-файла к конфигурации агента.
@@ -58,6 +60,9 @@ func applyAgentFileConfig(cfg *AgentConfig, fc agentFileConfig, setFlags map[str
 	if !setFlags["crypto-key"] && fc.CryptoKey != "" {
 		cfg.CryptoKey = fc.CryptoKey
 	}
+	if !setFlags["grpc-addr"] && fc.GRPCAddress != "" {
+		cfg.GRPCAddress = fc.GRPCAddress
+	}
 	return nil
 }
 
@@ -83,6 +88,7 @@ func LoadAgentConfig() (AgentConfig, error) {
 	flag.StringVar(&cfg.Key, "k", cfg.Key, "ключ для подписи данных")
 	flag.IntVar(&cfg.RateLimit, "l", cfg.RateLimit, "количество одновременно исходящих запросов на сервер")
 	flag.StringVar(&cfg.CryptoKey, "crypto-key", cfg.CryptoKey, "путь к файлу с публичным ключом для шифрования данных")
+	flag.StringVar(&cfg.GRPCAddress, "grpc-addr", cfg.GRPCAddress, "адрес gRPC-сервера агента (пустая строка — используется HTTP)")
 
 	flag.Parse()
 

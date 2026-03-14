@@ -21,6 +21,7 @@ type ServerConfig struct {
 	AuditURL        string `env:"AUDIT_URL"`
 	CryptoKey       string `env:"CRYPTO_KEY"`
 	TrustedSubnet   string `env:"TRUSTED_SUBNET"`
+	GRPCAddress     string `env:"GRPC_ADDRESS"`
 }
 
 // serverFileConfig описывает структуру JSON-файла конфигурации сервера
@@ -36,6 +37,7 @@ type serverFileConfig struct {
 	AuditURL        string `json:"audit_url"`
 	CryptoKey       string `json:"crypto_key"`
 	TrustedSubnet   string `json:"trusted_subnet"`
+	GRPCAddress     string `json:"grpc_address"`
 }
 
 // applyServerFileConfig применяет значения из JSON-файла к конфигурации сервера.
@@ -82,6 +84,9 @@ func applyServerFileConfig(cfg *ServerConfig, fc serverFileConfig, setFlags map[
 	if !setFlags["crypto-key"] && fc.CryptoKey != "" {
 		cfg.CryptoKey = fc.CryptoKey
 	}
+	if !setFlags["grpc-addr"] && fc.GRPCAddress != "" {
+		cfg.GRPCAddress = fc.GRPCAddress
+	}
 	return nil
 }
 
@@ -113,6 +118,7 @@ func LoadServerConfig() (ServerConfig, error) {
 	flag.StringVar(&cfg.AuditFile, "audit-file", cfg.AuditFile, "путь к файлу для сохранения логов аудита")
 	flag.StringVar(&cfg.AuditURL, "audit-url", cfg.AuditURL, "URL для отправки логов аудита")
 	flag.StringVar(&cfg.CryptoKey, "crypto-key", cfg.CryptoKey, "путь к файлу с приватным ключом для расшифровки данных")
+	flag.StringVar(&cfg.GRPCAddress, "grpc-addr", cfg.GRPCAddress, "адрес gRPC-сервера (пустая строка — gRPC отключён)")
 
 	flag.Parse()
 

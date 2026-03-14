@@ -16,6 +16,11 @@ import (
 	"go.uber.org/zap"
 )
 
+// metricsSender — интерфейс для отправки метрик (HTTP или gRPC).
+type metricsSender interface {
+	SendAllMetrics(ctx context.Context, gauges map[string]float64, counters map[string]int64) error
+}
+
 var (
 	buildVersion string
 	buildDate    string
@@ -68,10 +73,23 @@ func run() error {
 	// Создаем коллектор метрик
 	collector := agent.NewMetricsCollector()
 
-	// Создаем клиент для отправки метрик
-	sender, err := agent.NewMetricsSender(serverURL, cfg.Key, cfg.CryptoKey)
-	if err != nil {
-		return fmt.Errorf("ошибка при создании отправщика метрик: %w", err)
+	// Создаем отправщик метрик: gRPC (если задан адрес) или HTTP
+	var sender metricsSender
+	if cfg.GRPCAddress != "" {
+		logger.Info("Используется gRPC-транспорт", zap.String("grpc_address", cfg.GRPCAddress))
+		grpcSender, err := agent.NewGRPCSender(cfg.GRPCAddress)
+		if err != nil {
+			return fmt.Errorf("ошибка при создании gRPC-отправщика метрик: %w", err)
+		}
+		defer grpcSender.Close()
+		sender = grpcSender
+	} else {
+		logger.Info("Используется HTTP-транспорт", zap.String("server_url", serverURL))
+		httpSender, err := agent.NewMetricsSender(serverURL, cfg.Key, cfg.CryptoKey)
+		if err != nil {
+			return fmt.Errorf("ошибка при создании HTTP-отправщика метрик: %w", err)
+		}
+		sender = httpSender
 	}
 
 	// Объединяем сбор метрик в одну горутину
