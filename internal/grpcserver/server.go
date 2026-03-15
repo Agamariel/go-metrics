@@ -1,5 +1,5 @@
-// Package grpc содержит реализацию gRPC-сервера для приёма метрик.
-package grpc
+// Package grpcserver содержит реализацию gRPC-сервера для приёма метрик.
+package grpcserver
 
 import (
 	"context"

@@ -11,7 +11,7 @@ import (
 	"github.com/Agamariel/go-metrics/internal/audit"
 	"github.com/Agamariel/go-metrics/internal/config"
 	"github.com/Agamariel/go-metrics/internal/handler"
-	grpcserver "github.com/Agamariel/go-metrics/internal/grpc"
+	"github.com/Agamariel/go-metrics/internal/grpcserver"
 	"github.com/Agamariel/go-metrics/internal/logger"
 	"github.com/Agamariel/go-metrics/internal/repository"
 	"github.com/Agamariel/go-metrics/internal/service"

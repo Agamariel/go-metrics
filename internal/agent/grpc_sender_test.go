@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"testing"
+	"time"
 
 	pb "github.com/Agamariel/go-metrics/internal/proto"
 	"github.com/Agamariel/go-metrics/internal/repository"
@@ -164,7 +165,7 @@ func TestGRPCSender_SendError_Timeout(t *testing.T) {
 	require.NoError(t, err)
 	defer sender.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 50)
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
 	err = sender.SendAllMetrics(ctx, map[string]float64{"m": 1.0}, nil)

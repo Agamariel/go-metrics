@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	grpcserver "github.com/Agamariel/go-metrics/internal/grpc"
+	"github.com/Agamariel/go-metrics/internal/grpcserver"
 	"github.com/Agamariel/go-metrics/internal/config"
 	"github.com/Agamariel/go-metrics/internal/handler"
 	"github.com/Agamariel/go-metrics/internal/repository"
