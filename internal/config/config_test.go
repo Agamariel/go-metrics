@@ -194,16 +194,18 @@ func TestApplyServerFileConfig_FlagsOverride(t *testing.T) {
 	}
 
 	allFlags := map[string]bool{
-		"a":          true,
-		"r":          true,
-		"i":          true,
-		"f":          true,
-		"d":          true,
-		"k":          true,
-		"t":          true,
-		"audit-file": true,
-		"audit-url":  true,
-		"crypto-key": true,
+		"a":                true,
+		"r":                true,
+		"i":                true,
+		"f":                true,
+		"d":                true,
+		"k":                true,
+		"t":                true,
+		"audit-file":       true,
+		"audit-url":        true,
+		"crypto-key":       true,
+		"shutdown-timeout": true,
+		"grpc-addr":        true,
 	}
 	err := applyServerFileConfig(&cfg, fc, allFlags)
 	require.NoError(t, err)

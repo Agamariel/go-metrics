@@ -20,6 +20,8 @@ type ServerConfig struct {
 	AuditFile       string `env:"AUDIT_FILE"`
 	AuditURL        string `env:"AUDIT_URL"`
 	CryptoKey       string `env:"CRYPTO_KEY"`
+	TrustedSubnet   string `env:"TRUSTED_SUBNET"`
+	GRPCAddress     string `env:"GRPC_ADDRESS"`
 }
 
 // serverFileConfig описывает структуру JSON-файла конфигурации сервера
@@ -34,6 +36,8 @@ type serverFileConfig struct {
 	AuditFile       string `json:"audit_file"`
 	AuditURL        string `json:"audit_url"`
 	CryptoKey       string `json:"crypto_key"`
+	TrustedSubnet   string `json:"trusted_subnet"`
+	GRPCAddress     string `json:"grpc_address"`
 }
 
 // applyServerFileConfig применяет значения из JSON-файла к конфигурации сервера.
@@ -61,12 +65,15 @@ func applyServerFileConfig(cfg *ServerConfig, fc serverFileConfig, setFlags map[
 	if !setFlags["k"] && fc.Key != "" {
 		cfg.Key = fc.Key
 	}
-	if !setFlags["t"] && fc.ShutdownTimeout != "" {
+	if !setFlags["shutdown-timeout"] && fc.ShutdownTimeout != "" {
 		d, err := time.ParseDuration(fc.ShutdownTimeout)
 		if err != nil {
 			return fmt.Errorf("некорректное значение shutdown_timeout %q: %w", fc.ShutdownTimeout, err)
 		}
 		cfg.ShutdownTimeout = int(d.Seconds())
+	}
+	if !setFlags["t"] && fc.TrustedSubnet != "" {
+		cfg.TrustedSubnet = fc.TrustedSubnet
 	}
 	if !setFlags["audit-file"] && fc.AuditFile != "" {
 		cfg.AuditFile = fc.AuditFile
@@ -76,6 +83,9 @@ func applyServerFileConfig(cfg *ServerConfig, fc serverFileConfig, setFlags map[
 	}
 	if !setFlags["crypto-key"] && fc.CryptoKey != "" {
 		cfg.CryptoKey = fc.CryptoKey
+	}
+	if !setFlags["grpc-addr"] && fc.GRPCAddress != "" {
+		cfg.GRPCAddress = fc.GRPCAddress
 	}
 	return nil
 }
@@ -101,12 +111,14 @@ func LoadServerConfig() (ServerConfig, error) {
 	flag.IntVar(&cfg.StoreInterval, "i", cfg.StoreInterval, "интервал сохранения метрик в секундах (0 = синхронное сохранение)")
 	flag.StringVar(&cfg.FileStoragePath, "f", cfg.FileStoragePath, "путь к файлу для сохранения метрик")
 	flag.BoolVar(&cfg.Restore, "r", cfg.Restore, "загружать ли ранее сохранённые метрики при старте")
-	flag.IntVar(&cfg.ShutdownTimeout, "t", cfg.ShutdownTimeout, "таймаут graceful shutdown в секундах")
+	flag.IntVar(&cfg.ShutdownTimeout, "shutdown-timeout", cfg.ShutdownTimeout, "таймаут graceful shutdown в секундах")
+	flag.StringVar(&cfg.TrustedSubnet, "t", cfg.TrustedSubnet, "доверенная подсеть в формате CIDR")
 	flag.StringVar(&cfg.DatabaseDSN, "d", cfg.DatabaseDSN, "строка подключения к базе данных")
 	flag.StringVar(&cfg.Key, "k", cfg.Key, "ключ для подписи данных")
 	flag.StringVar(&cfg.AuditFile, "audit-file", cfg.AuditFile, "путь к файлу для сохранения логов аудита")
 	flag.StringVar(&cfg.AuditURL, "audit-url", cfg.AuditURL, "URL для отправки логов аудита")
 	flag.StringVar(&cfg.CryptoKey, "crypto-key", cfg.CryptoKey, "путь к файлу с приватным ключом для расшифровки данных")
+	flag.StringVar(&cfg.GRPCAddress, "grpc-addr", cfg.GRPCAddress, "адрес gRPC-сервера (пустая строка — gRPC отключён)")
 
 	flag.Parse()
 

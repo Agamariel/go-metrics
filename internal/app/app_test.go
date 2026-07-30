@@ -1,6 +1,7 @@
 package app
 
 import (
+	"os"
 	"testing"
 
 	"github.com/Agamariel/go-metrics/internal/config"
@@ -57,6 +58,53 @@ func TestApp_InitAudit_Disabled(t *testing.T) {
 	// Publisher должен быть nil, так как аудит отключен
 	if app.publisher != nil {
 		t.Error("Publisher should be nil when audit is disabled")
+	}
+}
+
+func TestApp_InitCrypto_EmptyPath(t *testing.T) {
+	app := &App{}
+	if err := app.initLogger(); err != nil {
+		t.Fatalf("initLogger: %v", err)
+	}
+	app.config = &config.ServerConfig{CryptoKey: ""}
+
+	if err := app.initCrypto(); err != nil {
+		t.Errorf("initCrypto with empty path should not fail: %v", err)
+	}
+	if app.privateKey != nil {
+		t.Error("privateKey should be nil when CryptoKey is empty")
+	}
+}
+
+func TestApp_InitCrypto_InvalidPath(t *testing.T) {
+	app := &App{}
+	if err := app.initLogger(); err != nil {
+		t.Fatalf("initLogger: %v", err)
+	}
+	app.config = &config.ServerConfig{CryptoKey: "/nonexistent/key.pem"}
+
+	if err := app.initCrypto(); err == nil {
+		t.Error("initCrypto with invalid path should fail")
+	}
+}
+
+func TestApp_InitCrypto_InvalidKeyContent(t *testing.T) {
+	f, err := os.CreateTemp("", "bad-key-*.pem")
+	if err != nil {
+		t.Fatalf("CreateTemp: %v", err)
+	}
+	defer os.Remove(f.Name())
+	f.WriteString("this is not a valid PEM key")
+	f.Close()
+
+	app := &App{}
+	if err := app.initLogger(); err != nil {
+		t.Fatalf("initLogger: %v", err)
+	}
+	app.config = &config.ServerConfig{CryptoKey: f.Name()}
+
+	if err := app.initCrypto(); err == nil {
+		t.Error("initCrypto with invalid key file content should fail")
 	}
 }
 
